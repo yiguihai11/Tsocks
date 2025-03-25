@@ -33,6 +33,8 @@ android {
         }
     }
 
+    externalNativeBuild.ndkBuild.path("src/main/jni/Android.mk")
+
     // 最新 AGP 中推荐使用 packaging {} DSL
     packaging {
         jniLibs {

@@ -100,7 +100,6 @@ fun StatusCircle() {
         val filter = IntentFilter(ServiceReceiver.ACTION_VPN_STATE_CHANGED)
         context.registerReceiver(vpnStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         
-        // 清理时注销接收器
         onDispose {
             context.unregisterReceiver(vpnStateReceiver)
         }
@@ -116,14 +115,14 @@ fun StatusCircle() {
         label = "rotation"
     )
     
-    // 添加发光效果大小动画
-    val glowRadius by animateFloatAsState(
-        targetValue = if (isRunning) 20f else 0f,
+    // 添加呼吸灯动画
+    val breathingAlpha by animateFloatAsState(
+        targetValue = if (isRunning) 1f else 0f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "glow"
+        label = "breathing"
     )
     
     // 添加位置动画 - 从中间移到顶部
@@ -133,8 +132,7 @@ fun StatusCircle() {
         label = "position"
     )
     
-    val borderColor = if (isRunning) Color.Green else Color.Red
-    val statusText = if (isRunning) "运行中" else "已停止"
+    val borderColor = if (isRunning) Color(0xFFEE82EE) else Color.Red
     
     Box(
         modifier = Modifier
@@ -152,12 +150,12 @@ fun StatusCircle() {
                 .size(200.dp),
             contentAlignment = Alignment.Center
         ) {
-            // 背景发光效果（仅在圆周围，不覆盖内部）
+            // 背景发光效果
             if (isRunning) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawCircle(
-                        color = Color.Green.copy(alpha = 0.1f),
-                        radius = size.minDimension / 2 + glowRadius,
+                        color = Color(0xFFEE82EE).copy(alpha = 0.1f),
+                        radius = size.minDimension / 2 + 20f,
                         center = center,
                         blendMode = BlendMode.SrcOver
                     )
@@ -169,52 +167,48 @@ fun StatusCircle() {
                         .size(240.dp)
                         .rotate(rotation)
                 ) {
-                    // 绘制彗星
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        // 彗星头部位置（在圆环外围）
                         val radius = size.minDimension / 2 - 20
                         val headX = center.x + radius
                         val headY = center.y
                         
                         // 彗星头部
                         drawCircle(
-                            color = Color.Green,
+                            color = Color(0xFFEE82EE),
                             radius = 8f,
                             center = androidx.compose.ui.geometry.Offset(headX, headY)
                         )
                         
-                        // 彗星尾巴（多个渐变透明度的圆）
+                        // 彗星尾巴
                         for (i in 1..12) {
                             val angle = -i * 5 * (PI / 180f).toFloat()
                             val tailX = center.x + radius * cos(angle)
                             val tailY = center.y + radius * sin(angle)
                             
                             drawCircle(
-                                color = Color.Green.copy(alpha = (1f - i * 0.08f).coerceIn(0f, 1f)),
+                                color = Color(0xFFEE82EE).copy(alpha = (1f - i * 0.08f).coerceIn(0f, 1f)),
                                 radius = (8f - i * 0.5f).coerceAtLeast(2f),
                                 center = androidx.compose.ui.geometry.Offset(tailX, tailY)
                             )
                         }
                         
-                        // 第二个彗星（位置相反）
+                        // 第二个彗星
                         val head2X = center.x - radius
                         val head2Y = center.y
                         
-                        // 第二个彗星头部
                         drawCircle(
-                            color = Color.Green,
+                            color = Color(0xFFEE82EE),
                             radius = 8f,
                             center = androidx.compose.ui.geometry.Offset(head2X, head2Y)
                         )
                         
-                        // 第二个彗星尾巴
                         for (i in 1..12) {
                             val angle = PI.toFloat() + i * 5 * (PI / 180f).toFloat()
                             val tailX = center.x + radius * cos(angle)
                             val tailY = center.y + radius * sin(angle)
                             
                             drawCircle(
-                                color = Color.Green.copy(alpha = (1f - i * 0.08f).coerceIn(0f, 1f)),
+                                color = Color(0xFFEE82EE).copy(alpha = (1f - i * 0.08f).coerceIn(0f, 1f)),
                                 radius = (8f - i * 0.5f).coerceAtLeast(2f),
                                 center = androidx.compose.ui.geometry.Offset(tailX, tailY)
                             )
@@ -223,40 +217,35 @@ fun StatusCircle() {
                 }
             }
             
-            // 主圆圈 - 只有边框，没有背景色
+            // 主圆圈 - 呼吸灯效果
             Box(
                 modifier = Modifier
                     .size(160.dp)
                     .background(Color.White, CircleShape)
                     .border(
                         width = 3.dp,
-                        color = borderColor,
+                        color = if (isRunning) Color(0xFFEE82EE).copy(alpha = breathingAlpha) else Color.Red,
                         shape = CircleShape
                     )
                     .clickable {
                         if (!isRunning) {
-                            // 启动VPN服务
                             prepareAndStartVpnService(context)
-                            // 更新首选项
                             Preferences(context).isEnabled = true
                         } else {
-                            // 停止VPN服务
                             stopVpnService(context)
-                            // 更新首选项
                             Preferences(context).isEnabled = false
                         }
-                        
-                        // 状态变更会通过广播接收器更新，无需在这里设置
-                        // isRunning = !isRunning
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = statusText,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = borderColor
-                )
+                if (!isRunning) {
+                    Text(
+                        text = "已停止",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Red
+                    )
+                }
             }
         }
     }
