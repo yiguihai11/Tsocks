@@ -1,0 +1,6 @@
+此文件是一个占位符，需要在此目录放置GeoLite2-Country.mmdb文件才能使用国旗功能。
+
+可以从MaxMind官网下载免费版的GeoLite2 Country数据库：
+https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+
+下载后将GeoLite2-Country.mmdb文件放在此目录下。 
