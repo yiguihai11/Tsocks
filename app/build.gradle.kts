@@ -85,36 +85,57 @@ cargo {
     module = "src/main/jni/shadowsocks-rust"
     libname = "sslocal"
     verbose = false
-    //targets = listOf("arm", "arm64", "x86", "x86_64")
     targets = listOf("x86_64")
     profile = findProperty("CARGO_PROFILE")?.toString() ?: "release"
-    // 使用局部变量，避免使用 !!，确保 libname 一定不为空
     extraCargoBuildArguments = listOf("--bin", libname ?: "sslocal")
     featureSpec.noDefaultBut(arrayOf(
         "local-tunnel", "local-online-config", "logging", "local-flow-stat", "local-dns", "aead-cipher-2022"
     ))
     exec = { spec, toolchain ->
         run {
-            try {
-                Runtime.getRuntime().exec(arrayOf("python3", "-V"))
-                spec.environment("RUST_ANDROID_GRADLE_PYTHON_COMMAND", "python3")
-                project.logger.lifecycle("Python 3 detected.")
-            } catch (e: java.io.IOException) {
-                project.logger.lifecycle("No python 3 detected.")
-                try {
-                    Runtime.getRuntime().exec(arrayOf("python", "-V"))
-                    spec.environment("RUST_ANDROID_GRADLE_PYTHON_COMMAND", "python")
-                    project.logger.lifecycle("Python detected.")
-                } catch (e: java.io.IOException) {
-                    throw GradleException("No python version detected. You should install python first to compile the project.")
-                }
+            // 检测 Python 版本
+            val pythonCommand = if (isPython3Available()) "python" else null
+            if (pythonCommand != null) {
+                spec.environment("RUST_ANDROID_GRADLE_PYTHON_COMMAND", pythonCommand)
+                project.logger.lifecycle("Python 3 detected: $pythonCommand")
+            } else {
+                throw GradleException("No Python 3 detected. Please install Python 3 to compile the project.")
             }
+
             // 设置链接相关环境变量
             spec.environment("RUST_ANDROID_GRADLE_CC_LINK_ARG", "-Wl,-z,max-page-size=16384,-soname,lib$libname.so")
-            spec.environment("RUST_ANDROID_GRADLE_LINKER_WRAPPER_PY", "$projectDir/$module/../linker-wrapper.py")
-            spec.environment("RUST_ANDROID_GRADLE_TARGET", "target/${toolchain.target}/${profile}/lib$libname.so")
+
+            // 使用 File 类构建路径
+            val linkerWrapperPath = File(projectDir, "$module/../linker-wrapper.py").absolutePath
+            spec.environment("RUST_ANDROID_GRADLE_LINKER_WRAPPER_PY", linkerWrapperPath)
+
+            val targetPath = File("target", "${toolchain.target}/$profile/lib$libname.so").path
+            spec.environment("RUST_ANDROID_GRADLE_TARGET", targetPath)
         }
     }
+}
+
+// 辅助函数：检查 Python 3 是否可用
+fun isPython3Available(): Boolean {
+    try {
+        val process = Runtime.getRuntime().exec(arrayOf("python", "--version"))
+        val output = process.inputStream.bufferedReader().readText().trim()
+        if (output.startsWith("Python 3")) {
+            return true
+        }
+    } catch (e: Exception) {
+        // Ignore
+    }
+    try {
+        val process = Runtime.getRuntime().exec(arrayOf("python3", "--version"))
+        val output = process.inputStream.bufferedReader().readText().trim()
+        if (output.startsWith("Python 3")) {
+            return true
+        }
+    } catch (e: Exception) {
+        // Ignore
+    }
+    return false
 }
 
 tasks.whenTaskAdded {
