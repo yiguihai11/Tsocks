@@ -2,11 +2,13 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("org.mozilla.rust-android-gradle.rust-android")
 }
 
 android {
     namespace = "com.yiguihai.tsocks"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.yiguihai.tsocks"
@@ -14,41 +16,148 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
-
+        multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 设置 APK 文件名：将 archivesBaseName 属性设置为 "$applicationId-$versionName"
+        setProperty("archivesBaseName", "$applicationId-$versionName")
+
+        externalNativeBuild.ndkBuild {
+            // 使用 addAll 而非 +=，更符合 Kotlin DSL 风格
+            arguments.addAll(
+                listOf(
+                    "APP_CFLAGS+=-DPKGNAME=com/yiguihai/tsocks -ffile-prefix-map=${rootDir}=.",
+                    "APP_LDFLAGS+=-Wl,--build-id=none",
+                    "-j${Runtime.getRuntime().availableProcessors()}"
+                )
+            )
+        }
+    }
+
+    // 最新 AGP 中推荐使用 packaging {} DSL
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("x86_64")
+            isUniversalApk = false
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+        debug {
+            isMinifyEnabled = false
+        }
     }
+
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
     }
-    
-    // 解决AndroidX和Support库冲突
-    configurations.all {
-        resolutionStrategy {
-            force("androidx.core:core:1.15.0")
-            force("androidx.versionedparcelable:versionedparcelable:1.1.1")
+}
+
+cargo {
+    module = "src/main/jni/shadowsocks-rust"
+    libname = "sslocal"
+    verbose = false
+    //targets = listOf("arm", "arm64", "x86", "x86_64")
+    targets = listOf("x86_64")
+    profile = findProperty("CARGO_PROFILE")?.toString() ?: "release"
+    // 使用局部变量，避免使用 !!，确保 libname 一定不为空
+    extraCargoBuildArguments = listOf("--bin", libname ?: "sslocal")
+    featureSpec.noDefaultBut(arrayOf(
+        "local-tunnel", "local-online-config", "logging", "local-flow-stat", "local-dns", "aead-cipher-2022"
+    ))
+    exec = { spec, toolchain ->
+        run {
+            try {
+                Runtime.getRuntime().exec(arrayOf("python3", "-V"))
+                spec.environment("RUST_ANDROID_GRADLE_PYTHON_COMMAND", "python3")
+                project.logger.lifecycle("Python 3 detected.")
+            } catch (e: java.io.IOException) {
+                project.logger.lifecycle("No python 3 detected.")
+                try {
+                    Runtime.getRuntime().exec(arrayOf("python", "-V"))
+                    spec.environment("RUST_ANDROID_GRADLE_PYTHON_COMMAND", "python")
+                    project.logger.lifecycle("Python detected.")
+                } catch (e: java.io.IOException) {
+                    throw GradleException("No python version detected. You should install python first to compile the project.")
+                }
+            }
+            // 设置链接相关环境变量
+            spec.environment("RUST_ANDROID_GRADLE_CC_LINK_ARG", "-Wl,-z,max-page-size=16384,-soname,lib$libname.so")
+            spec.environment("RUST_ANDROID_GRADLE_LINKER_WRAPPER_PY", "$projectDir/$module/../linker-wrapper.py")
+            spec.environment("RUST_ANDROID_GRADLE_TARGET", "target/${toolchain.target}/${profile}/lib$libname.so")
         }
     }
 }
 
-dependencies {
+tasks.whenTaskAdded {
+    when (name) {
+        "mergeDebugJniLibFolders", "mergeReleaseJniLibFolders" -> dependsOn("cargoBuild")
+    }
+}
 
+tasks.register<Exec>("cargoClean") {
+    executable("cargo")
+    args("clean")
+    workingDir("$projectDir/${cargo.module}")
+}
+// tasks.clean.dependsOn("cargoClean")
+
+tasks.register<Exec>("buildGoExecutable") {
+    // 注意：这里直接使用字符串插值，确保 ndkDir 等变量能正确解析为绝对路径
+    val ndkDir = android.ndkDirectory.absolutePath
+    val osName = System.getProperty("os.name").lowercase()
+    val toolchainDir = if (osName.contains("windows")) "windows" else "linux"
+    val toolchain = "$ndkDir/toolchains/llvm/prebuilt/${toolchainDir}-x86_64/bin"
+
+    val abis = listOf("x86_64")
+    val goArchs = listOf("amd64")
+    val clangArchs = listOf("x86_64-linux-android")
+    val minApi = android.defaultConfig.minSdkVersion?.apiLevel ?: 21
+
+    workingDir("src/main/jni/v2ray-plugin")
+    environment("CGO_ENABLED", "1")
+    environment("GOOS", "android")
+    environment("GOARCH", goArchs[0])
+    environment("CC", "$toolchain/${clangArchs[0]}${minApi}-clang")
+
+    commandLine("go", "build", "-ldflags=-s -w", "-o", "${projectDir}/src/main/jniLibs/${abis[0]}/libv2ray-plugin.so")
+}
+
+tasks.whenTaskAdded {
+    if (name == "cargoBuild") {
+        dependsOn("buildGoExecutable")
+    }
+}
+
+dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -57,22 +166,11 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-
-    // 导航组件
     implementation(libs.androidx.navigation.compose)
-
-    // JSON处理
     implementation(libs.gson)
-    
-    // Compose扩展组件和图标
     implementation(libs.androidx.material.icons.extended)
-    
-    // GeoIP2数据库
     implementation(libs.geoip2)
-    
-    // FlagKit国旗图标库
     implementation(libs.flagkit.android)
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
