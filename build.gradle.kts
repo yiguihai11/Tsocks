@@ -9,7 +9,7 @@ buildscript {
     }
     dependencies {
         // 添加 org.mozilla.rust-android-gradle 插件的依赖
-        classpath("org.mozilla.rust-android-gradle:plugin:0.9.6")
+        classpath(libs.plugin)
     }
 }
 

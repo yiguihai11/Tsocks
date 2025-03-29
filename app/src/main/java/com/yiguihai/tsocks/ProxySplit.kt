@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yiguihai.tsocks.utils.Preferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -111,9 +112,10 @@ fun ProxyModeTab(preferences: Preferences) {
     var ipv6Enabled by remember { mutableStateOf(preferences.isIPv6Enabled()) }
     var dnsV4 by remember { mutableStateOf(preferences.getDnsV4String()) }
     var dnsV6 by remember { mutableStateOf(preferences.getDnsV6String()) }
+    var excludeChinaIp by remember { mutableStateOf(preferences.getExcludeChinaIp()) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("分流模式", style = MaterialTheme.typography.headlineSmall)
+        Text("VPN分流模式", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))
         Column(Modifier.fillMaxWidth()) {
             listOf("全局代理" to "所有连接均通过代理转发", "绕行模式" to "指定应用和IP地址不通过代理", "仅代理" to "仅代理指定的应用，其他应用直连")
@@ -134,6 +136,38 @@ fun ProxyModeTab(preferences: Preferences) {
                     Text(desc, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 40.dp, bottom = 8.dp))
                 }
         }
+        
+        // 国内IP直连设置（现在始终可见）
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+        
+        Text("国内IP直连设置", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(12.dp))
+        
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "排除国内IP段", 
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = excludeChinaIp,
+                onCheckedChange = { 
+                    excludeChinaIp = it
+                    preferences.updateExcludeChinaIp(it)
+                }
+            )
+        }
+        Text(
+            "启用后Shadowsocks将加载排除中国大陆IP段的ACL文件",
+            style = MaterialTheme.typography.bodySmall, 
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
         Spacer(Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(Modifier.height(24.dp))

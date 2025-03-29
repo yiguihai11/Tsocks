@@ -2,4 +2,13 @@
 <resources>
 
     <style name="Theme.TSocks" parent="android:Theme.Material.Light.NoActionBar" />
+    
+    <style name="Theme.TSocks.Transparent" parent="Theme.TSocks">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

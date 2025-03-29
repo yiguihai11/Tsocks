@@ -44,6 +44,7 @@ android {
 
     sourceSets {
         getByName("main") {
+            // 指定多个 ABI 的 jniLibs 路径
             jniLibs.srcDirs("src/main/jniLibs")
         }
     }
@@ -52,7 +53,8 @@ android {
         abi {
             isEnable = true
             reset()
-            include("x86_64")
+            // 添加所有目标 ABI
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
             isUniversalApk = false
         }
     }
@@ -83,15 +85,22 @@ android {
     }
 }
 
+// 为 cargo（Rust）设置多个编译目标：注意 target triple 需根据实际情况调整
 cargo {
     module = "src/main/jni/shadowsocks-rust"
     libname = "sslocal"
     verbose = false
-    targets = listOf("x86_64")
+    // 这里以常用的 Android Rust target triple 为例
+    targets = listOf("arm", "arm64", "x86", "x86_64")
     profile = findProperty("CARGO_PROFILE")?.toString() ?: "release"
     extraCargoBuildArguments = listOf("--bin", libname ?: "sslocal")
     featureSpec.noDefaultBut(arrayOf(
-        "local-tunnel", "local-online-config", "logging", "local-flow-stat", "local-dns", "aead-cipher-2022"
+        "local-tunnel",
+        "local-online-config",
+        "logging",
+        "local-flow-stat",
+        "local-dns",
+        "aead-cipher-2022"
     ))
     exec = { spec, toolchain ->
         run {
@@ -111,7 +120,10 @@ cargo {
             val linkerWrapperPath = File(projectDir, "$module/../linker-wrapper.py").absolutePath
             spec.environment("RUST_ANDROID_GRADLE_LINKER_WRAPPER_PY", linkerWrapperPath)
 
-            val targetPath = File("target", "${toolchain.target}/$profile/lib$libname.so").path
+            // toolchain.target 这里应为当前正在编译的 target triple（例如 "x86_64-linux-android"），
+            // 如果可能为空可添加默认值
+            val currentTarget = toolchain.target ?: "x86_64-linux-android"
+            val targetPath = File("target", "$currentTarget/$profile/lib$libname.so").path
             spec.environment("RUST_ANDROID_GRADLE_TARGET", targetPath)
         }
     }
@@ -140,6 +152,7 @@ fun isPython3Available(): Boolean {
     return false
 }
 
+// 当合并 JNI 文件夹时依赖 cargoBuild
 tasks.whenTaskAdded {
     when (name) {
         "mergeDebugJniLibFolders", "mergeReleaseJniLibFolders" -> dependsOn("cargoBuild")
@@ -153,27 +166,40 @@ tasks.register<Exec>("cargoClean") {
 }
 // tasks.clean.dependsOn("cargoClean")
 
-tasks.register<Exec>("buildGoExecutable") {
-    // 注意：这里直接使用字符串插值，确保 ndkDir 等变量能正确解析为绝对路径
-    val ndkDir = android.ndkDirectory.absolutePath
-    val osName = System.getProperty("os.name").lowercase()
-    val toolchainDir = if (osName.contains("windows")) "windows" else "linux"
-    val toolchain = "$ndkDir/toolchains/llvm/prebuilt/${toolchainDir}-x86_64/bin"
+// 为 Go 编译分别为不同 ABI 生成独立任务
+val ndkDir = android.ndkDirectory.absolutePath
+val osName = System.getProperty("os.name").lowercase()
+val toolchainDir = if (osName.contains("windows")) "windows" else "linux"
+val toolchainPath = "$ndkDir/toolchains/llvm/prebuilt/${toolchainDir}-x86_64/bin"
+val minApi = android.defaultConfig.minSdkVersion?.apiLevel ?: 21
 
-    val abis = listOf("x86_64")
-    val goArchs = listOf("amd64")
-    val clangArchs = listOf("x86_64-linux-android")
-    val minApi = android.defaultConfig.minSdkVersion?.apiLevel ?: 21
+// 定义各 ABI 的配置：(ABI, GOARCH, clang 前缀)
+val abiConfigs = listOf(
+    Triple("armeabi-v7a", "arm", "armv7a-linux-androideabi"),
+    Triple("arm64-v8a", "arm64", "aarch64-linux-android"),
+    Triple("x86", "386", "i686-linux-android"),
+    Triple("x86_64", "amd64", "x86_64-linux-android")
+)
 
-    workingDir("src/main/jni/v2ray-plugin")
-    environment("CGO_ENABLED", "1")
-    environment("GOOS", "android")
-    environment("GOARCH", goArchs[0])
-    environment("CC", "$toolchain/${clangArchs[0]}${minApi}-clang")
-
-    commandLine("go", "build", "-ldflags=-s -w", "-o", "${projectDir}/src/main/jniLibs/${abis[0]}/libv2ray-plugin.so")
+// 为每个 ABI 注册一个 go 编译任务
+abiConfigs.forEach { (abi, goArch, clangArch) ->
+    tasks.register<Exec>("buildGoExecutable_$abi") {
+        workingDir("src/main/jni/v2ray-plugin")
+        environment("CGO_ENABLED", "1")
+        environment("GOOS", "android")
+        environment("GOARCH", goArch)
+        environment("CC", "$toolchainPath/${clangArch}${minApi}-clang")
+        // 输出路径根据 ABI 放到对应文件夹中
+        commandLine("go", "build", "-ldflags=-s -w", "-o", "${projectDir}/src/main/jniLibs/$abi/libv2ray-plugin.so")
+    }
 }
 
+// 注册一个汇总任务，使得调用 buildGoExecutable 时构建所有 ABI 版本
+tasks.register("buildGoExecutable") {
+    dependsOn(abiConfigs.map { (abi, _, _) -> tasks.named("buildGoExecutable_$abi") })
+}
+
+// 当 cargoBuild 任务添加时，依赖 buildGoExecutable（汇总任务）
 tasks.whenTaskAdded {
     if (name == "cargoBuild") {
         dependsOn("buildGoExecutable")
@@ -194,6 +220,9 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.geoip2)
     implementation(libs.flagkit.android)
+    implementation(libs.snakeyaml)
+    implementation(libs.androidx.localbroadcastmanager)
+    implementation(libs.material3)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

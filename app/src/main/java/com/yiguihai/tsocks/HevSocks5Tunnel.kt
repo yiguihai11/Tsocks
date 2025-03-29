@@ -14,13 +14,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
@@ -44,8 +47,11 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.yiguihai.tsocks.utils.Preferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -122,9 +128,17 @@ fun HevSocks5TunnelScreen() {
             try {
                 val configFile = File(context.filesDir, "hev-socks5-tunnel.yaml")
                 configFile.writeText(yamlContent)
-                Log.d("HevSocks5Tunnel", "配置已保存")
+                Log.d("HevSocks5Tunnel", "配置文件已保存到: ${configFile.absolutePath}")
+                
+                // 验证文件内容
+                if (configFile.exists() && configFile.canRead()) {
+                    val savedContent = configFile.readText()
+                    Log.d("HevSocks5Tunnel", "保存的配置文件内容:\n$savedContent")
+                } else {
+                    Log.e("HevSocks5Tunnel", "配置文件保存失败: 文件不可访问")
+                }
             } catch (e: Exception) {
-                Log.e("HevSocks5Tunnel", "保存配置失败", e)
+                Log.e("HevSocks5Tunnel", "保存配置文件失败", e)
             }
         }
     }
@@ -208,6 +222,8 @@ fun TunnelTab(config: TunnelConfig, onConfigChanged: (TunnelConfig) -> Unit) {
 @Composable
 fun Socks5Tab(config: Socks5Config, onConfigChanged: (Socks5Config) -> Unit) {
     val scrollState = rememberScrollState()
+    var passwordVisible by remember { mutableStateOf(false) }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -241,10 +257,20 @@ fun Socks5Tab(config: Socks5Config, onConfigChanged: (Socks5Config) -> Unit) {
             value = config.username,
             onValueChange = { onConfigChanged(config.copy(username = it)) }
         )
-        LabeledTextField(
-            label = "Socks5服务器密码",
+        OutlinedTextField(
             value = config.password,
-            onValueChange = { onConfigChanged(config.copy(password = it)) }
+            onValueChange = { onConfigChanged(config.copy(password = it)) },
+            label = { Text("Socks5服务器密码") },
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                    )
+                }
+            }
         )
         LabeledTextField(
             label = "Socket标记",
@@ -447,7 +473,7 @@ fun YamlPreviewTab(yamlContent: String) {
                 .padding(16.dp)
         ) {
             Icon(
-                imageVector = Icons.Outlined.ContentCopy,
+                imageVector = Icons.Filled.ContentCopy,
                 contentDescription = "复制YAML"
             )
         }
@@ -507,7 +533,10 @@ fun generateYamlContent(
     socks5Config: Socks5Config,
     miscConfig: MiscConfig
 ): String {
-    return buildString {
+    Log.d("HevSocks5Tunnel", "开始生成YAML配置")
+    Log.d("HevSocks5Tunnel", "隧道配置: $tunnelConfig")
+    
+    val content = buildString {
         append("tunnel:\n")
         append("  # Interface name\n")
         append("  name: ${tunnelConfig.name}\n")
@@ -553,10 +582,9 @@ fun generateYamlContent(
         }
         append("\n")
         append("misc:\n")
-        if (miscConfig.taskStackSize != 86016) {
-            append("  # task stack size (bytes)\n")
-            append("  task-stack-size: ${miscConfig.taskStackSize}\n")
-        }
+        append("  # task stack size (bytes)\n")
+        append("  task-stack-size: ${miscConfig.taskStackSize}\n")
+        
         if (miscConfig.tcpBufferSize != 65536) {
             append("  # tcp buffer size (bytes)\n")
             append("  tcp-buffer-size: ${miscConfig.tcpBufferSize}\n")
@@ -586,6 +614,9 @@ fun generateYamlContent(
             append("  limit-nofile: ${miscConfig.limitNofile}\n")
         }
     }
+    
+    Log.d("HevSocks5Tunnel", "生成的YAML配置:\n$content")
+    return content
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

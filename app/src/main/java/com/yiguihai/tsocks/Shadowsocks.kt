@@ -25,11 +25,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,6 +46,8 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -51,9 +56,12 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,12 +73,24 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.GsonBuilder
+import com.google.gson.TypeAdapter
+import com.google.gson.annotations.JsonAdapter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonWriter
+import com.yiguihai.tsocks.utils.GeoIpUtils
+import com.yiguihai.tsocks.utils.JsonTreeView
+import com.yiguihai.tsocks.utils.NativeProgramExecutor
+import com.yiguihai.tsocks.utils.Preferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -81,7 +101,7 @@ data class ShadowsocksConfig(
     val locals: List<LocalConfig> = listOf(),
     val servers: List<ServerConfig> = listOf(),
     val balancer: BalancerConfig = BalancerConfig(),
-    val online_config: OnlineConfig = OnlineConfig(),
+    val online_config: OnlineConfig? = null,
     val log: LogConfig = LogConfig(),
     val runtime: RuntimeConfig = RuntimeConfig()
 )
@@ -99,9 +119,11 @@ data class LocalConfig(
     val local_dns_port: Int? = null,
     val remote_dns_address: String? = null,
     val remote_dns_port: Int? = null,
-    val client_cache_size: Int? = null
+    val client_cache_size: Int? = null,
+    val launchd_tcp_socket_name: String? = null
 )
 
+@JsonAdapter(ServerConfigAdapter::class)
 data class ServerConfig(
     val disabled: Boolean = false,
     val address: String = "0.0.0.0",
@@ -138,12 +160,101 @@ data class LogFormat(
 )
 
 data class RuntimeConfig(
-    val mode: String = "multi_thread",
+    val mode: String = "single_thread",
     val worker_count: Int = 10
 )
 
 // 这些函数已被 Preferences 类替代
 // Helper functions for saving and loading configuration 已被移除
+
+// 自定义ServerConfig的TypeAdapter
+class ServerConfigAdapter : TypeAdapter<ServerConfig>() {
+    override fun write(out: JsonWriter, value: ServerConfig?) {
+        if (value == null) {
+            out.nullValue()
+            return
+        }
+        out.beginObject()
+        out.name("disabled").value(value.disabled)
+        out.name("address").value(value.address)
+        out.name("port").value(value.port)
+        out.name("method").value(value.method)
+        out.name("password").value(value.password)
+        
+        // 只有当plugin不为null时才输出plugin相关字段
+        if (value.plugin != null) {
+            out.name("plugin").value(value.plugin)
+            if (value.plugin_opts != null) {
+                out.name("plugin_opts").value(value.plugin_opts)
+            }
+            if (value.plugin_args.isNotEmpty()) {
+                out.name("plugin_args").beginArray()
+                for (arg in value.plugin_args) {
+                    out.value(arg)
+                }
+                out.endArray()
+            }
+            out.name("plugin_mode").value(value.plugin_mode)
+        }
+        
+        if (value.remark.isNotEmpty()) {
+            out.name("remark").value(value.remark)
+        }
+        out.endObject()
+    }
+
+    override fun read(reader: JsonReader): ServerConfig {
+        var disabled = false
+        var address = "0.0.0.0"
+        var port = 8388
+        var method = "aes-256-gcm"
+        var password = ""
+        var plugin: String? = null
+        var plugin_opts: String? = null
+        var plugin_args = listOf<String>()
+        var plugin_mode = "tcp_only"
+        var remark = ""
+        
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "disabled" -> disabled = reader.nextBoolean()
+                "address" -> address = reader.nextString()
+                "port" -> port = reader.nextInt()
+                "method" -> method = reader.nextString()
+                "password" -> password = reader.nextString()
+                "plugin" -> plugin = reader.nextString()
+                "plugin_opts" -> plugin_opts = reader.nextString()
+                "plugin_args" -> {
+                    val args = mutableListOf<String>()
+                    reader.beginArray()
+                    while (reader.hasNext()) {
+                        args.add(reader.nextString())
+                    }
+                    reader.endArray()
+                    plugin_args = args
+                }
+                "plugin_mode" -> plugin_mode = reader.nextString()
+                "remark" -> remark = reader.nextString()
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        
+        return ServerConfig(
+            disabled = disabled,
+            address = address,
+            port = port,
+            method = method,
+            password = password,
+            plugin = plugin,
+            plugin_opts = plugin_opts,
+            plugin_args = plugin_args,
+            plugin_mode = plugin_mode,
+            remark = remark
+        )
+    }
+}
 
 @Composable
 fun ShadowsocksScreen() {
@@ -152,31 +263,23 @@ fun ShadowsocksScreen() {
     val coroutineScope = rememberCoroutineScope()
 
     var config by remember { mutableStateOf(preferences.getShadowsocksConfig()) }
-    var selectedTabIndex by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(false) }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    
+    // 初始化GeoIP数据库并在组件销毁时释放资源
+    LaunchedEffect(Unit) { GeoIpUtils.initialize(context) }
+    DisposableEffect(Unit) { onDispose { GeoIpUtils.release() } }
 
-    // 使用LaunchedEffect加载配置
-    LaunchedEffect(Unit) {
-        try {
-            // 直接从preferences获取配置，不再需要从文件加载
-            config = preferences.getShadowsocksConfig()
-        } catch (e: Exception) {
-            Log.e("Shadowsocks", "加载配置失败", e)
-        } finally {
-            isLoading = false
-        }
-    }
-
-    // 使用扩展函数，简化代码
+    // 使用扩展函数更新配置
     fun updateConfig(newConfig: ShadowsocksConfig) {
         config = newConfig
-        coroutineScope.launch {
-            try {
-                preferences.updateShadowsocksConfig(newConfig)
-            } catch (e: Exception) {
-                Log.e("Shadowsocks", "保存配置失败: ${e.message}", e)
-                Toast.makeText(context, "保存配置失败", Toast.LENGTH_SHORT).show()
-            }
+        coroutineScope.launch(Dispatchers.IO) {
+            runCatching { preferences.updateShadowsocksConfig(newConfig) }
+                .onFailure { e ->
+                    Log.e("Shadowsocks", "保存配置失败: ${e.message}", e)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "保存配置失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
         }
     }
 
@@ -184,79 +287,41 @@ fun ShadowsocksScreen() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        Column(modifier = Modifier.fillMaxSize()) {
+            TabRow(selectedTabIndex = selectedTabIndex) {
+                listOf("Locals", "Servers", "Balancer", "Advanced", "JSON").forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTabIndex == index,
+                        onClick = { selectedTabIndex = index },
+                        text = { Text(title) }
+                    )
+                }
             }
-        } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                TabRow(selectedTabIndex = selectedTabIndex) {
-                    Tab(
-                        selected = selectedTabIndex == 0,
-                        onClick = { selectedTabIndex = 0 },
-                        text = { Text("Locals") }
-                    )
-                    Tab(
-                        selected = selectedTabIndex == 1,
-                        onClick = { selectedTabIndex = 1 },
-                        text = { Text("Servers") }
-                    )
-                    Tab(
-                        selected = selectedTabIndex == 2,
-                        onClick = { selectedTabIndex = 2 },
-                        text = { Text("Balancer") }
-                    )
-                    Tab(
-                        selected = selectedTabIndex == 3,
-                        onClick = { selectedTabIndex = 3 },
-                        text = { Text("Advanced") }
-                    )
-                    Tab(
-                        selected = selectedTabIndex == 4,
-                        onClick = { selectedTabIndex = 4 },
-                        text = { Text("JSON") }
-                    )
-                }
 
-                when (selectedTabIndex) {
-                    0 -> LocalsTab(
-                        locals = config.locals,
-                        onLocalsChanged = { newLocals ->
-                            updateConfig(config.copy(locals = newLocals))
-                        }
-                    )
-                    1 -> ServersTab(
-                        servers = config.servers,
-                        balancer = config.balancer,
-                        onServersChanged = { newServers ->
-                            updateConfig(config.copy(servers = newServers))
-                        },
-                        onBalancerChanged = { newBalancer ->
-                            updateConfig(config.copy(balancer = newBalancer))
-                        }
-                    )
-                    2 -> BalancerTab(
-                        balancer = config.balancer,
-                        onBalancerChanged = { newBalancer ->
-                            updateConfig(config.copy(balancer = newBalancer))
-                        }
-                    )
-                    3 -> AdvancedTab(
-                        onlineConfig = config.online_config,
-                        logConfig = config.log,
-                        runtimeConfig = config.runtime,
-                        onOnlineConfigChanged = { newOnlineConfig ->
-                            updateConfig(config.copy(online_config = newOnlineConfig))
-                        },
-                        onLogConfigChanged = { newLogConfig ->
-                            updateConfig(config.copy(log = newLogConfig))
-                        },
-                        onRuntimeConfigChanged = { newRuntimeConfig ->
-                            updateConfig(config.copy(runtime = newRuntimeConfig))
-                        }
-                    )
-                    4 -> JsonViewTab(config = config)
-                }
+            when (selectedTabIndex) {
+                0 -> LocalsTab(
+                    locals = config.locals,
+                    onLocalsChanged = { updateConfig(config.copy(locals = it)) }
+                )
+                1 -> ServersTab(
+                    servers = config.servers,
+                    balancer = config.balancer,
+                    onServersChanged = { updateConfig(config.copy(servers = it)) },
+                    onBalancerChanged = { updateConfig(config.copy(balancer = it)) }
+                )
+                2 -> BalancerTab(
+                    balancer = config.balancer,
+                    onBalancerChanged = { updateConfig(config.copy(balancer = it)) }
+                )
+                3 -> AdvancedTab(
+                    onlineConfig = config.online_config,
+                    logConfig = config.log,
+                    runtimeConfig = config.runtime,
+                    onOnlineConfigChanged = { updateConfig(config.copy(online_config = it)) },
+                    onLogConfigChanged = { updateConfig(config.copy(log = it)) },
+                    onRuntimeConfigChanged = { updateConfig(config.copy(runtime = it)) }
+                )
+                4 -> JsonViewTab(config = config)
             }
         }
     }
@@ -270,6 +335,20 @@ fun LocalsTab(
 ) {
     var localsList by remember { mutableStateOf(locals) }
     var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
+    val context = LocalContext.current
+    // 使用NativeProgramExecutor获取支持的协议列表
+    val executor = remember { NativeProgramExecutor(context) }
+    val protocols = remember { 
+        runCatching { executor.getSupportedProtocols() }
+            .getOrElse { 
+                Log.e("Shadowsocks", "获取协议列表失败: ${it.message}", it)
+                listOf("socks", "tunnel", "dns") // 默认值
+            } 
+    }
+    // 备用的协议列表（当获取到的列表为空时使用）
+    val defaultProtocols = listOf("socks", "tunnel", "dns")
+    // 最终使用的协议列表
+    val availableProtocols = protocols.ifEmpty { defaultProtocols }
 
     Column(
         modifier = Modifier
@@ -342,8 +421,7 @@ fun LocalsTab(
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Protocol dropdown
-                                val protocols = listOf("socks", "tunnel", "dns")
+                                // Protocol dropdown - 使用实际获取到的协议列表
                                 var expandedProtocol by remember { mutableStateOf(false) }
                                 ExposedDropdownMenuBox(
                                     expanded = expandedProtocol,
@@ -365,7 +443,7 @@ fun LocalsTab(
                                         expanded = expandedProtocol,
                                         onDismissRequest = { expandedProtocol = false }
                                     ) {
-                                        protocols.forEach { protocol ->
+                                        availableProtocols.forEach { protocol ->
                                             DropdownMenuItem(
                                                 text = { Text(protocol) },
                                                 onClick = {
@@ -418,42 +496,66 @@ fun LocalsTab(
                                 // Mode dropdown
                                 val modes = listOf("tcp_only", "tcp_and_udp", "udp_only")
                                 var expandedMode by remember { mutableStateOf(false) }
-                                ExposedDropdownMenuBox(
-                                    expanded = expandedMode,
-                                    onExpandedChange = { expandedMode = !expandedMode }
-                                ) {
-                                    TextField(
-                                        value = updatedLocal.value.mode,
-                                        onValueChange = { },
-                                        label = { Text("Mode") },
-                                        readOnly = true,
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedMode) },
-                                        colors = ExposedDropdownMenuDefaults.textFieldColors(),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .menuAnchor()
-                                    )
-
-                                    ExposedDropdownMenu(
+                                
+                                // HTTP协议只支持TCP，不显示模式选择
+                                if (updatedLocal.value.protocol != "http") {
+                                    ExposedDropdownMenuBox(
                                         expanded = expandedMode,
-                                        onDismissRequest = { expandedMode = false }
+                                        onExpandedChange = { expandedMode = !expandedMode }
                                     ) {
-                                        modes.forEach { mode ->
-                                            DropdownMenuItem(
-                                                text = { Text(mode) },
-                                                onClick = {
-                                                    val newLocal = updatedLocal.value.copy(mode = mode)
-                                                    updatedLocal.value = newLocal
+                                        TextField(
+                                            value = updatedLocal.value.mode,
+                                            onValueChange = { },
+                                            label = { Text("Mode") },
+                                            readOnly = true,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedMode) },
+                                            colors = ExposedDropdownMenuDefaults.textFieldColors(),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .menuAnchor()
+                                        )
 
-                                                    val newList = localsList.toMutableList()
-                                                    newList[index] = newLocal
-                                                    localsList = newList
-                                                    onLocalsChanged(newList)
-                                                    expandedMode = false
-                                                }
-                                            )
+                                        ExposedDropdownMenu(
+                                            expanded = expandedMode,
+                                            onDismissRequest = { expandedMode = false }
+                                        ) {
+                                            modes.forEach { mode ->
+                                                DropdownMenuItem(
+                                                    text = { Text(mode) },
+                                                    onClick = {
+                                                        val newLocal = updatedLocal.value.copy(mode = mode)
+                                                        updatedLocal.value = newLocal
+
+                                                        val newList = localsList.toMutableList()
+                                                        newList[index] = newLocal
+                                                        localsList = newList
+                                                        onLocalsChanged(newList)
+                                                        expandedMode = false
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
+                                } else {
+                                    // 如果是HTTP协议，则强制设置为tcp_only且显示提示
+                                    LaunchedEffect(updatedLocal.value.protocol) {
+                                        if (updatedLocal.value.mode != "tcp_only") {
+                                            val newLocal = updatedLocal.value.copy(mode = "tcp_only")
+                                            updatedLocal.value = newLocal
+                                            
+                                            val newList = localsList.toMutableList()
+                                            newList[index] = newLocal
+                                            localsList = newList
+                                            onLocalsChanged(newList)
+                                        }
+                                    }
+                                    
+                                    Text(
+                                        text = "HTTP协议仅支持TCP模式",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
                                 }
 
                                 // Protocol-specific fields
@@ -603,6 +705,85 @@ fun LocalsTab(
                                             label = { Text("Client Cache Size (Optional)") },
                                             modifier = Modifier.fillMaxWidth()
                                         )
+                                    }
+                                    "http" -> {
+                                        // HTTP 协议特有的字段
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "HTTP代理配置",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            
+                                            // 添加帮助按钮
+                                            IconButton(
+                                                onClick = {
+                                                    // 显示HTTP代理设置帮助提示
+                                                    Toast.makeText(
+                                                        context,
+                                                        "在Wi-Fi设置中找到代理设置，选择\"手动\"，输入此处的地址和端口",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Help,
+                                                    contentDescription = "查看帮助",
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        
+                                        // 在Android设备上提示HTTP协议信息
+                                        Text(
+                                            text = "HTTP代理模式只支持TCP连接，可作为浏览器或系统的HTTP代理服务器",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        )
+                                        
+                                        Text(
+                                            text = "配置步骤：将此地址和端口设置为HTTP代理服务器即可使用",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                        
+                                        // 清除协议切换时可能残留的无关字段
+                                        LaunchedEffect(updatedLocal.value.protocol) {
+                                            // 如果有残留的UDP字段、DNS字段或转发字段，清除它们
+                                            val needsCleaning = updatedLocal.value.local_udp_address != null || 
+                                                               updatedLocal.value.local_udp_port != null ||
+                                                               updatedLocal.value.forward_address != null ||
+                                                               updatedLocal.value.forward_port != null ||
+                                                               updatedLocal.value.local_dns_address != null ||
+                                                               updatedLocal.value.local_dns_port != null ||
+                                                               updatedLocal.value.remote_dns_address != null ||
+                                                               updatedLocal.value.remote_dns_port != null ||
+                                                               updatedLocal.value.client_cache_size != null
+                                            
+                                            if (needsCleaning) {
+                                                val newLocal = updatedLocal.value.copy(
+                                                    local_udp_address = null,
+                                                    local_udp_port = null,
+                                                    forward_address = null,
+                                                    forward_port = null,
+                                                    local_dns_address = null,
+                                                    local_dns_port = null,
+                                                    remote_dns_address = null,
+                                                    remote_dns_port = null,
+                                                    client_cache_size = null
+                                                )
+                                                updatedLocal.value = newLocal
+                                                
+                                                val newList = localsList.toMutableList()
+                                                newList[index] = newLocal
+                                                localsList = newList
+                                                onLocalsChanged(newList)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1213,19 +1394,48 @@ fun ServersTab(
                                 
                                 // 单服务器模式下，显示单选按钮；负载均衡模式下，显示删除按钮
                                 if (!balancerConfig.enable) {
-                                    RadioButton(
-                                        selected = isSelected,
-                                        onClick = {
-                                            selectedServerIndex = index
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 删除按钮
+                                        IconButton(onClick = {
+                                            val newList = serversList.toMutableList()
+                                            newList.removeAt(index)
+                                            serversList = newList
+                                            onServersChanged(newList)
                                             
-                                            // 更新所有服务器状态，只有选中的启用
-                                            val updatedServers = serversList.mapIndexed { idx, srv ->
-                                                srv.copy(disabled = idx != index)
+                                            // 如果删除的是当前选中的服务器，需要重新选择
+                                            if (selectedServerIndex == index) {
+                                                // 找到第一个未禁用的服务器作为新的选择
+                                                val newSelectedIndex = newList.indexOfFirst { !it.disabled }
+                                                selectedServerIndex = if (newSelectedIndex >= 0) newSelectedIndex else null
+                                                
+                                                // 更新服务器状态
+                                                val updatedServers = newList.mapIndexed { idx, srv ->
+                                                    srv.copy(disabled = idx != selectedServerIndex)
+                                                }
+                                                serversList = updatedServers
+                                                onServersChanged(updatedServers)
                                             }
-                                            serversList = updatedServers
-                                            onServersChanged(updatedServers)
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "删除")
                                         }
-                                    )
+                                        
+                                        // 单选按钮
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = {
+                                                selectedServerIndex = index
+                                                
+                                                // 更新所有服务器状态，只有选中的启用
+                                                val updatedServers = serversList.mapIndexed { idx, srv ->
+                                                    srv.copy(disabled = idx != index)
+                                                }
+                                                serversList = updatedServers
+                                                onServersChanged(updatedServers)
+                                            }
+                                        )
+                                    }
                                 } else {
                                     IconButton(onClick = {
                                         val newList = serversList.toMutableList()
@@ -1343,7 +1553,14 @@ fun ServersTab(
                                 )
 
                                 // Encryption method dropdown
-                                val methods = listOf("aes-256-gcm", "aes-128-gcm", "chacha20-ietf-poly1305")
+                                val executor = remember { NativeProgramExecutor(context) }
+                                val methods = remember { 
+                                    runCatching { executor.getSupportedEncryptMethods() }
+                                        .getOrElse { 
+                                            Log.e("Shadowsocks", "获取加密方法失败: ${it.message}", it)
+                                            listOf("aes-256-gcm", "aes-128-gcm", "chacha20-ietf-poly1305") 
+                                        } 
+                                }
                                 var expandedEncryptionMethod by remember { mutableStateOf(false) }
                                 ExposedDropdownMenuBox(
                                     expanded = expandedEncryptionMethod,
@@ -1367,7 +1584,7 @@ fun ServersTab(
                                     ) {
                                         methods.forEach { method ->
                                             DropdownMenuItem(
-                                                text = { Text(method) },
+                                                text = { Text(text = method) },
                                                 onClick = {
                                                     val newServer = updatedServer.value.copy(method = method)
                                                     updatedServer.value = newServer
@@ -1384,7 +1601,8 @@ fun ServersTab(
                                 }
 
                                 // Password field
-                                TextField(
+                                var passwordVisible by remember { mutableStateOf(false) }
+                                OutlinedTextField(
                                     value = updatedServer.value.password,
                                     onValueChange = {
                                         val newServer = updatedServer.value.copy(password = it)
@@ -1396,12 +1614,23 @@ fun ServersTab(
                                         onServersChanged(newList)
                                     },
                                     label = { Text("密码") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                            Icon(
+                                                imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                                            )
+                                        }
+                                    }
                                 )
 
                                 // Plugin fields
-                                TextField(
+                                CustomDropdownSelector(
+                                    label = "插件",
                                     value = updatedServer.value.plugin ?: "",
+                                    options = listOf("", "v2ray-plugin"),
                                     onValueChange = {
                                         val newServer = updatedServer.value.copy(plugin = it.ifEmpty { null })
                                         updatedServer.value = newServer
@@ -1410,63 +1639,64 @@ fun ServersTab(
                                         newList[index] = newServer
                                         serversList = newList
                                         onServersChanged(newList)
-                                    },
-                                    label = { Text("插件 (可选)") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    }
                                 )
 
-                                TextField(
-                                    value = updatedServer.value.plugin_opts ?: "",
-                                    onValueChange = {
-                                        val newServer = updatedServer.value.copy(plugin_opts = it.ifEmpty { null })
-                                        updatedServer.value = newServer
-
-                                        val newList = serversList.toMutableList()
-                                        newList[index] = newServer
-                                        serversList = newList
-                                        onServersChanged(newList)
-                                    },
-                                    label = { Text("插件选项 (可选)") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                // Plugin mode dropdown
-                                val pluginModes = listOf("tcp_only", "tcp_and_udp", "udp_only")
-                                var expandedPluginMode by remember { mutableStateOf(false) }
-                                ExposedDropdownMenuBox(
-                                    expanded = expandedPluginMode,
-                                    onExpandedChange = { expandedPluginMode = !expandedPluginMode }
-                                ) {
+                                // 当选择了任何插件时显示插件选项
+                                if (updatedServer.value.plugin != null) {
                                     TextField(
-                                        value = updatedServer.value.plugin_mode,
-                                        onValueChange = { },
-                                        label = { Text("插件模式") },
-                                        readOnly = true,
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPluginMode) },
-                                        colors = ExposedDropdownMenuDefaults.textFieldColors(),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .menuAnchor()
+                                        value = updatedServer.value.plugin_opts ?: "",
+                                        onValueChange = {
+                                            val newServer = updatedServer.value.copy(plugin_opts = it.ifEmpty { null })
+                                            updatedServer.value = newServer
+
+                                            val newList = serversList.toMutableList()
+                                            newList[index] = newServer
+                                            serversList = newList
+                                            onServersChanged(newList)
+                                        },
+                                        label = { Text("插件选项 (可选)") },
+                                        modifier = Modifier.fillMaxWidth()
                                     )
 
-                                    ExposedDropdownMenu(
+                                    // Plugin mode dropdown
+                                    val pluginModes = listOf("tcp_only", "tcp_and_udp", "udp_only")
+                                    var expandedPluginMode by remember { mutableStateOf(false) }
+                                    ExposedDropdownMenuBox(
                                         expanded = expandedPluginMode,
-                                        onDismissRequest = { expandedPluginMode = false }
+                                        onExpandedChange = { expandedPluginMode = !expandedPluginMode }
                                     ) {
-                                        pluginModes.forEach { mode ->
-                                            DropdownMenuItem(
-                                                text = { Text(mode) },
-                                                onClick = {
-                                                    val newServer = updatedServer.value.copy(plugin_mode = mode)
-                                                    updatedServer.value = newServer
+                                        TextField(
+                                            value = updatedServer.value.plugin_mode,
+                                            onValueChange = { },
+                                            label = { Text("插件模式") },
+                                            readOnly = true,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPluginMode) },
+                                            colors = ExposedDropdownMenuDefaults.textFieldColors(),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .menuAnchor()
+                                        )
 
-                                                    val newList = serversList.toMutableList()
-                                                    newList[index] = newServer
-                                                    serversList = newList
-                                                    onServersChanged(newList)
-                                                    expandedPluginMode = false
-                                                }
-                                            )
+                                        ExposedDropdownMenu(
+                                            expanded = expandedPluginMode,
+                                            onDismissRequest = { expandedPluginMode = false }
+                                        ) {
+                                            pluginModes.forEach { mode ->
+                                                DropdownMenuItem(
+                                                    text = { Text(mode) },
+                                                    onClick = {
+                                                        val newServer = updatedServer.value.copy(plugin_mode = mode)
+                                                        updatedServer.value = newServer
+
+                                                        val newList = serversList.toMutableList()
+                                                        newList[index] = newServer
+                                                        serversList = newList
+                                                        onServersChanged(newList)
+                                                        expandedPluginMode = false
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1588,17 +1818,32 @@ fun BalancerTab(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdvancedTab(
-    onlineConfig: OnlineConfig,
+    onlineConfig: OnlineConfig?,
     logConfig: LogConfig,
     runtimeConfig: RuntimeConfig,
     onOnlineConfigChanged: (OnlineConfig) -> Unit,
     onLogConfigChanged: (LogConfig) -> Unit,
     onRuntimeConfigChanged: (RuntimeConfig) -> Unit
 ) {
-    var expandedSection by remember { mutableStateOf("online") } // "online", "log", "runtime"
-    var updatedOnlineConfig by remember { mutableStateOf(onlineConfig) }
+    var expandedSection by remember { mutableStateOf("online") } // "online", "log", "runtime", "version"
+    // 使用非空的OnlineConfig实例用于UI
+    var updatedOnlineConfig by remember { mutableStateOf(onlineConfig ?: OnlineConfig()) }
     var updatedLogConfig by remember { mutableStateOf(logConfig) }
     var updatedRuntimeConfig by remember { mutableStateOf(runtimeConfig) }
+    val context = LocalContext.current
+    val executor = remember { NativeProgramExecutor(context) }
+    
+    // 异步加载版本信息
+    var versionInfo by remember { mutableStateOf("加载中...") }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            versionInfo = try {
+                executor.getVersion()
+            } catch (e: Exception) {
+                "版本获取失败: ${e.message}"
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1629,6 +1874,7 @@ fun AdvancedTab(
                     onOnlineConfigChanged(newConfig)
                 },
                 label = { Text("配置URL") },
+                placeholder = { Text("留空表示禁用在线配置") },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -1644,13 +1890,14 @@ fun AdvancedTab(
                     }
                 },
                 label = { Text("更新间隔 (秒)") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = updatedOnlineConfig.config_url.isNotBlank()
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "SIP008允许从URL自动更新服务器配置",
+                text = "SIP008允许从URL自动更新服务器配置，留空表示禁用",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -1786,6 +2033,50 @@ fun AdvancedTab(
                 style = MaterialTheme.typography.bodySmall
             )
         }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 版本信息部分
+        ExpandableCard(
+            title = "版本信息",
+            expanded = expandedSection == "version",
+            onExpandChanged = { 
+                expandedSection = if (expandedSection == "version") "" else "version" 
+            }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = "libsslocal",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = versionInfo,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "libsslocal 是 shadowsocks-rust 的核心组件，提供 Shadowsocks 协议的本地客户端功能。",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 }
 
@@ -1829,8 +2120,16 @@ fun ExpandableCard(
 
 @Composable
 fun JsonViewTab(config: ShadowsocksConfig) {
+    // 创建一个用于显示的配置副本，过滤掉空URL的online_config
+    val displayConfig = if (config.online_config == null || config.online_config.config_url.isBlank()) {
+        // 如果online_config为null或者URL为空，则创建没有online_config的副本
+        config.copy(online_config = null)
+    } else {
+        config
+    }
+    
     val gson = GsonBuilder().setPrettyPrinting().create()
-    val jsonString = gson.toJson(config)
+    val jsonString = gson.toJson(displayConfig)
     val context = LocalContext.current
     var useJsonTreeView by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()

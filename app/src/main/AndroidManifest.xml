@@ -7,14 +7,15 @@
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
-    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS" />
-    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="33" />
 
     <application
         android:allowBackup="true"
@@ -25,12 +26,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TSocks"
-        tools:targetApi="31"
+        tools:targetApi="33"
         tools:replace="android:appComponentFactory"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory">
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
+            android:enableOnBackInvokedCallback="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.TSocks">
             <intent-filter>
@@ -38,34 +41,39 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".TrafficStatsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TSocks.Transparent"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:excludeFromRecents="true">
         </activity>
 
         <service
             android:name=".TProxyService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false"
-            android:process=":vpn"
             android:foregroundServiceType="specialUse"
             android:enabled="true"
             android:stopWithTask="false">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
+            <property
+                android:name="android.app.property.IDLE_ALLOWLIST"
+                android:value="true" />
         </service>
         
-        <receiver
-            android:name=".ServiceReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.SHUTDOWN" />
-                <action android:name="android.intent.action.POWER_CONNECTED" />
-                <action android:name="android.intent.action.POWER_DISCONNECTED" />
-                <action android:name="com.yiguihai.tsocks.VPN_STATE_CHANGED" />
-            </intent-filter>
-        </receiver>
     </application>
 
 </manifest>
