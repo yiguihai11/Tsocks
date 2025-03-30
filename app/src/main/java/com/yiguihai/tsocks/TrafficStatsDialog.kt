@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -50,8 +51,8 @@ class TrafficStatsActivity : ComponentActivity() {
     private var currentDownloadSpeed by mutableStateOf("0 KB/s")
     private var currentUploadPackets by mutableIntStateOf(0)
     private var currentDownloadPackets by mutableIntStateOf(0)
-    private var ssUploadSpeed by mutableStateOf("0 KB/s")
-    private var ssDownloadSpeed by mutableStateOf("0 KB/s")
+    private var currentTotalUploadBytes by mutableStateOf("0 B")
+    private var currentTotalDownloadBytes by mutableStateOf("0 B")
     private var job: kotlinx.coroutines.Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,8 +70,8 @@ class TrafficStatsActivity : ComponentActivity() {
                     currentDownloadSpeed = stats.downloadSpeed
                     currentUploadPackets = stats.uploadPackets
                     currentDownloadPackets = stats.downloadPackets
-                    ssUploadSpeed = stats.ssUploadSpeed
-                    ssDownloadSpeed = stats.ssDownloadSpeed
+                    currentTotalUploadBytes = stats.totalUploadBytes
+                    currentTotalDownloadBytes = stats.totalDownloadBytes
                     updateUI()
                 }
             } catch (e: Exception) {
@@ -97,8 +98,8 @@ class TrafficStatsActivity : ComponentActivity() {
                         downloadSpeed = currentDownloadSpeed,
                         uploadPackets = currentUploadPackets,
                         downloadPackets = currentDownloadPackets,
-                        ssUploadSpeed = ssUploadSpeed,
-                        ssDownloadSpeed = ssDownloadSpeed,
+                        totalUploadBytes = currentTotalUploadBytes,
+                        totalDownloadBytes = currentTotalDownloadBytes,
                         onDismiss = { finish() },
                         onEnterApp = {
                             startActivity(Intent(this, MainActivity::class.java).apply {
@@ -119,8 +120,8 @@ fun TrafficStatsDialogContent(
     downloadSpeed: String,
     uploadPackets: Int,
     downloadPackets: Int,
-    ssUploadSpeed: String,
-    ssDownloadSpeed: String,
+    totalUploadBytes: String,
+    totalDownloadBytes: String,
     onDismiss: () -> Unit,
     onEnterApp: () -> Unit
 ) {
@@ -172,40 +173,17 @@ fun TrafficStatsDialogContent(
                     )
                     
                     listOf(
-                        "上传速度:" to uploadSpeed,
-                        "下载速度:" to downloadSpeed,
-                        "上传数据包:" to "$uploadPackets pkt/s",
-                        "下载数据包:" to "$downloadPackets pkt/s"
+                        Pair("上传速度:", "$uploadSpeed (总: $totalUploadBytes)"),
+                        Pair("下载速度:", "$downloadSpeed (总: $totalDownloadBytes)"),
+                        Pair("上传数据包:", "$uploadPackets pkt/s"),
+                        Pair("下载数据包:", "$downloadPackets pkt/s")
                     ).forEach { (label, value) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = label)
-                            Text(text = value, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    
-                    Text(
-                        text = "Shadowsocks流量",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                    
-                    listOf(
-                        "上传速度:" to ssUploadSpeed,
-                        "下载速度:" to ssDownloadSpeed
-                    ).forEach { (label, value) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(text = label)
                             Text(text = value, fontWeight = FontWeight.Bold)

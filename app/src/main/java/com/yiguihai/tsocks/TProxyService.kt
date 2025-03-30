@@ -32,8 +32,8 @@ data class TrafficStats(
     val downloadSpeed: String,
     val uploadPackets: Int,
     val downloadPackets: Int,
-    val ssUploadSpeed: String = "0 KB/s",
-    val ssDownloadSpeed: String = "0 KB/s"
+    val totalUploadBytes: String = "0 B",
+    val totalDownloadBytes: String = "0 B"
 )
 
 class TProxyService : VpnService() {
@@ -75,7 +75,16 @@ class TProxyService : VpnService() {
     private val statsRunnable = Runnable { updateNotification() }
     private lateinit var preferences: Preferences
     private val serviceScope = CoroutineScope(Dispatchers.IO)
-    private var shadowsocksStatsJob: Job? = null
+    
+    // 上一次的流量统计值，用于计算增量
+    private var lastTxPackets = 0L
+    private var lastTxBytes = 0L
+    private var lastRxPackets = 0L
+    private var lastRxBytes = 0L
+    private var lastStatsTime = 0L
+    
+    // 最小流量阈值(字节/秒)，小于此值视为无流量，防止背景噪音
+    private val MIN_TRAFFIC_THRESHOLD = 50L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when {
@@ -137,9 +146,6 @@ class TProxyService : VpnService() {
                         Log.e(TAG, "Shadowsocks服务启动失败")
                         showErrorNotification("Shadowsocks服务启动失败，请检查配置")
                         Log.w(TAG, "仅启动HEV Socks5 Tunnel服务，Shadowsocks未启动")
-                    } else {
-                        // 启动Shadowsocks流量统计监视
-                        startShadowsocksStatsMonitor()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "启动Shadowsocks服务失败", e)
@@ -156,32 +162,8 @@ class TProxyService : VpnService() {
         }
     }
 
-    private fun startShadowsocksStatsMonitor() {
-        shadowsocksStatsJob?.cancel()
-        shadowsocksStatsJob = serviceScope.launch {
-            try {
-                while (true) {
-                    try {
-                        val stats = ShadowsocksManager.getTrafficStats()
-                        if ((stats?.uploadSpeed ?: 0) > 0 || (stats?.downloadSpeed ?: 0) > 0) {
-                            Log.d(TAG, "Shadowsocks流量 - 上传: ${ByteUtils.formatBytesSpeed(stats?.uploadSpeed ?: 0)}, 下载: ${ByteUtils.formatBytesSpeed(stats?.downloadSpeed ?: 0)}")
-                        }
-                        delay(STATS_UPDATE_INTERVAL_MS)
-                    } catch (e: CancellationException) {
-                        // 协程被取消，退出循环
-                        break
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "监视Shadowsocks流量统计失败", e)
-            }
-        }
-    }
-
     private fun stopService() {
         statsHandler.removeCallbacks(statsRunnable)
-        shadowsocksStatsJob?.cancel()
-        shadowsocksStatsJob = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         releaseResources()
         
@@ -323,27 +305,73 @@ class TProxyService : VpnService() {
         // 在后台线程执行，避免阻塞主线程
         serviceScope.launch(Dispatchers.IO) {
             val tproxyStats = TProxyGetStats()
-            val ssStats = ShadowsocksManager.getTrafficStats()
+            val currentTime = System.currentTimeMillis()
             
             try {
-                val uploadSpeed = tproxyStats?.let { ByteUtils.formatSpeed(it[1]) } ?: "0 KB/s"
-                val downloadSpeed = tproxyStats?.let { ByteUtils.formatSpeed(it[3]) } ?: "0 KB/s"
-                val uploadPackets = tproxyStats?.get(0)?.toInt() ?: 0
-                val downloadPackets = tproxyStats?.get(2)?.toInt() ?: 0
-                
-                // 格式化Shadowsocks流量数据
-                val ssUploadSpeed = ByteUtils.formatBytesSpeed(ssStats?.uploadSpeed ?: 0L)
-                val ssDownloadSpeed = ByteUtils.formatBytesSpeed(ssStats?.downloadSpeed ?: 0L)
-                
-                // 广播完整的流量统计
-                broadcastTrafficStats(
-                    uploadSpeed, 
-                    downloadSpeed, 
-                    uploadPackets, 
-                    downloadPackets,
-                    ssUploadSpeed,
-                    ssDownloadSpeed
-                )
+                if (tproxyStats != null) {
+                    // 获取当前累积值
+                    val curTxPackets = tproxyStats[0]
+                    val curTxBytes = tproxyStats[1]
+                    val curRxPackets = tproxyStats[2]
+                    val curRxBytes = tproxyStats[3]
+                    
+                    // 计算时间间隔（秒）
+                    val timeDelta = if (lastStatsTime > 0) {
+                        (currentTime - lastStatsTime) / 1000.0
+                    } else {
+                        // 首次调用，无法计算差值
+                        STATS_UPDATE_INTERVAL_MS / 1000.0
+                    }
+                    
+                    // 计算速率（每秒）
+                    val txPacketsRate = if (lastStatsTime > 0) {
+                        ((curTxPackets - lastTxPackets) / timeDelta).toInt()
+                    } else 0
+                    
+                    val txBytesRate = if (lastStatsTime > 0) {
+                        ((curTxBytes - lastTxBytes) / timeDelta).toLong()
+                    } else 0L
+                    
+                    val rxPacketsRate = if (lastStatsTime > 0) {
+                        ((curRxPackets - lastRxPackets) / timeDelta).toInt()
+                    } else 0
+                    
+                    val rxBytesRate = if (lastStatsTime > 0) {
+                        ((curRxBytes - lastRxBytes) / timeDelta).toLong()
+                    } else 0L
+                    
+                    // 应用最小流量阈值过滤
+                    val filteredTxBytesRate = if (txBytesRate < MIN_TRAFFIC_THRESHOLD) 0L else txBytesRate
+                    val filteredRxBytesRate = if (rxBytesRate < MIN_TRAFFIC_THRESHOLD) 0L else rxBytesRate
+                    
+                    val uploadSpeed = ByteUtils.formatSpeed(filteredTxBytesRate)
+                    val downloadSpeed = ByteUtils.formatSpeed(filteredRxBytesRate)
+                    
+                    // 保存当前值以便下次计算
+                    lastTxPackets = curTxPackets
+                    lastTxBytes = curTxBytes
+                    lastRxPackets = curRxPackets
+                    lastRxBytes = curRxBytes
+                    lastStatsTime = currentTime
+                    
+                    // 计算总传输字节数并格式化
+                    val totalUploadBytes = ByteUtils.formatBytes(curTxBytes)
+                    val totalDownloadBytes = ByteUtils.formatBytes(curRxBytes)
+                    
+                    // 广播完整的流量统计（使用过滤后的值）
+                    broadcastTrafficStats(
+                        uploadSpeed, 
+                        downloadSpeed, 
+                        txPacketsRate,
+                        rxPacketsRate,
+                        totalUploadBytes,
+                        totalDownloadBytes
+                    )
+                } else {
+                    // tproxyStats为null时，重置所有值
+                    resetTrafficStats()
+                    broadcastTrafficStats("0 B/s", "0 B/s", 0, 0, "0 B", "0 B")
+                }
 
                 // 在主线程更新通知
                 withContext(Dispatchers.Main) {
@@ -351,11 +379,21 @@ class TProxyService : VpnService() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "更新通知失败", e)
+                // 发生异常时重置统计
+                resetTrafficStats()
             }
             
             // 确保统计信息持续更新
             statsHandler.postDelayed(statsRunnable, STATS_UPDATE_INTERVAL_MS)
         }
+    }
+    
+    private fun resetTrafficStats() {
+        lastTxPackets = 0L
+        lastTxBytes = 0L
+        lastRxPackets = 0L
+        lastRxBytes = 0L
+        lastStatsTime = 0L
     }
 
     private fun broadcastTrafficStats(
@@ -363,8 +401,8 @@ class TProxyService : VpnService() {
         downloadSpeed: String,
         uploadPackets: Int,
         downloadPackets: Int,
-        ssUploadSpeed: String = "0 KB/s",
-        ssDownloadSpeed: String = "0 KB/s"
+        totalUploadBytes: String,
+        totalDownloadBytes: String
     ) {
         try {
             _trafficStats.tryEmit(TrafficStats(
@@ -372,8 +410,8 @@ class TProxyService : VpnService() {
                 downloadSpeed = downloadSpeed,
                 uploadPackets = uploadPackets,
                 downloadPackets = downloadPackets,
-                ssUploadSpeed = ssUploadSpeed,
-                ssDownloadSpeed = ssDownloadSpeed
+                totalUploadBytes = totalUploadBytes,
+                totalDownloadBytes = totalDownloadBytes
             ))
         } catch (e: Exception) {
             Log.e(TAG, "发送流量统计失败", e)

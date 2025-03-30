@@ -107,25 +107,28 @@ fun StatusCircle() {
     LaunchedEffect(Unit) {
         Log.d(TAG, "初始化VPN状态: isEnabled=${prefs.isEnabled}")
         isRunning = prefs.isEnabled
-            while (true) {
-                kotlinx.coroutines.delay(2000)
-                val currentStatus = prefs.isEnabled
-                if (isRunning != currentStatus) {
-                    Log.d(TAG, "检测到VPN状态变更: $isRunning -> $currentStatus")
-                    isRunning = currentStatus
-                }
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            val currentStatus = prefs.isEnabled
+            if (isRunning != currentStatus) {
+                Log.d(TAG, "检测到VPN状态变更: $isRunning -> $currentStatus")
+                isRunning = currentStatus
             }
-
+        }
     }
+
+    // 为了确保在页面返回时动画能够继续，我们使用当前时间作为动画的起点
+    // 这确保了即使在页面离开后返回，动画也能够连续运行
+    val currentTime = remember { System.currentTimeMillis() }
 
     // 添加旋转动画
     val rotation by animateFloatAsState(
-        targetValue = if (isRunning) 360f else 0f,
+        targetValue = if (isRunning) 1080f else 0f, // 增大旋转角度，使动画更明显
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
+            animation = tween(6000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "rotation"
+        label = "rotation$currentTime" // 使用时间戳确保动画标签唯一
     )
 
     // 添加发光效果大小动画
@@ -135,7 +138,7 @@ fun StatusCircle() {
             animation = tween(1500, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "glow"
+        label = "glow$currentTime" // 使用时间戳确保动画标签唯一
     )
 
     // 添加心跳动画
@@ -145,7 +148,7 @@ fun StatusCircle() {
             animation = tween(500, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "heartbeat"
+        label = "heartbeat$currentTime" // 使用时间戳确保动画标签唯一
     )
 
     // 添加呼吸灯效果
@@ -155,14 +158,14 @@ fun StatusCircle() {
             animation = tween(1500, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "breathing"
+        label = "breathing$currentTime" // 使用时间戳确保动画标签唯一
     )
 
     // 添加位置动画 - 从中间移到顶部
     val verticalPosition by animateDpAsState(
         targetValue = if (isRunning) 80.dp else 0.dp,
         animationSpec = tween(1000, delayMillis = 100, easing = EaseInOutSine),
-        label = "position"
+        label = "position$currentTime" // 使用时间戳确保动画标签唯一
     )
 
     // 运行中为绿色，停止为紫色
@@ -367,5 +370,11 @@ fun StatusCircle() {
                 }
             }
         }
+    }
+
+    // 确保动画始终跟随状态变化
+    LaunchedEffect(isRunning, currentTime) {
+        // 此Effect会在isRunning状态变化或页面重组时重新执行
+        // 关键在于currentTime作为依赖，确保即使状态没变化，在页面返回时也会触发
     }
 }

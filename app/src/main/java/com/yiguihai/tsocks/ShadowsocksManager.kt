@@ -42,13 +42,10 @@ class ShadowsocksManager {
         private const val ACL_FILE_NAME = "bypass-china.acl"
         private const val ERROR_CHANNEL_ID = "shadowsocks_error"
         private const val ERROR_NOTIFICATION_ID = 1001
-        private const val STAT_TCP_PORT = 8010
         private val RESTART_DELAY = 1.seconds
         private val ERROR_RETRY_DELAY = 1.seconds
-        private val RATE_UPDATE_INTERVAL = 1.seconds
 
         private var isRunning = AtomicBoolean(false)
-        private var trafficMonitor: TrafficMonitor? = null
         private var process: Process? = null
         private var processId = -1
         private var logJob: Job? = null
@@ -79,9 +76,6 @@ class ShadowsocksManager {
             val tmpConfigDir = context.getDir("configs", Context.MODE_PRIVATE)
             val tmpConfigFile = File(tmpConfigDir, "current.json")
             
-            // 准备TCP地址
-            val statAddr = "127.0.0.1:$STAT_TCP_PORT"
-            
             try {
                 // 处理v2ray插件路径
                 val configJson = GsonBuilder().setPrettyPrinting().create().toJson(ssConfig)
@@ -99,25 +93,21 @@ class ShadowsocksManager {
                 withContext(Dispatchers.IO) {
                     // 将配置写入临时文件
                     FileOutputStream(tmpConfigFile).use { it.write(jsonObject.toString().toByteArray()) }
+                    
+                    // 打印临时配置文件路径和内容
+                    Log.i(TAG, "临时配置文件路径: ${tmpConfigFile.absolutePath}")
+                    Log.i(TAG, "配置文件内容: ${tmpConfigFile.readText()}")
                 }
                 
                 // 重置重启计数
                 restartCount.set(0)
-                
-                // 初始化流量监控，使用TCP
-                trafficMonitor = TrafficMonitor(statAddr).apply { start() }
-                
-                // 先启动监控服务器，确保在Shadowsocks启动前已准备好接收连接
-                delay(500)
                 
                 // 构建启动命令
                 val nativeLibDir = context.applicationInfo.nativeLibraryDir
                 val ssLocalPath = "$nativeLibDir/libsslocal.so"
                 val commandArgs = mutableListOf(
                     ssLocalPath,
-                    "-c", tmpConfigFile.absolutePath,
-                    "--vpn",
-                    "--stat-addr", statAddr
+                    "-c", tmpConfigFile.absolutePath
                 )
                 
                 // 检查是否需要加载ACL文件来排除中国IP
@@ -288,8 +278,6 @@ class ShadowsocksManager {
                 // 停止监控
                 logJob?.cancel()
                 logJob = null
-                trafficMonitor?.stop()
-                trafficMonitor = null
                 
                 // 终止进程
                 if (processId > 0) android.os.Process.killProcess(processId)
@@ -311,9 +299,6 @@ class ShadowsocksManager {
         private fun cleanupResources() {
             logJob?.cancel()
             logJob = null
-            
-            trafficMonitor?.stop()
-            trafficMonitor = null
             
             process?.let {
                 try {
@@ -366,190 +351,5 @@ class ShadowsocksManager {
                 null
             }
         }
-
-        /**
-         * 获取当前流量统计
-         * @return 流量统计信息，如果未运行则返回null
-         */
-        fun getTrafficStats(): ShadowsocksTrafficStats? {
-            return trafficMonitor?.getCurrentStats()
-        }
-    }
-
-    /**
-     * 流量统计数据类
-     */
-    data class ShadowsocksTrafficStats(
-        val uploadSpeed: Long,    // 上传速率（字节/秒）
-        val downloadSpeed: Long,  // 下载速率（字节/秒）
-        val uploadTotal: Long,    // 总上传流量（字节）
-        val downloadTotal: Long   // 总下载流量（字节）
-    )
-
-    /**
-     * 流量监控类
-     */
-    private class TrafficMonitor(
-        private val statAddr: String
-    ) {
-        private var serverSocket: ServerSocket? = null
-        private val buffer = ByteArray(16)
-        private val stat = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
-        private var txTotal = 0L
-        private var rxTotal = 0L
-        private var txRate = 0L
-        private var rxRate = 0L
-        private var running = AtomicBoolean(false)
-        private var lastTx = 0L
-        private var lastRx = 0L
-        private var lastStatsTime = SystemClock.elapsedRealtime()
-        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-        init {
-            Log.d(TAG, "流量监控使用TCP模式，地址: $statAddr")
-        }
-        
-        fun start() {
-            if (running.getAndSet(true)) return
-            startTcpServer()
-        }
-        
-        private fun startTcpServer() {
-            scope.launch {
-                try {
-                    val parts = statAddr.split(":")
-                    if (parts.size != 2) {
-                        Log.e(TAG, "无效的统计地址格式: $statAddr")
-                        return@launch
-                    }
-                    
-                    val port = parts[1].toIntOrNull() ?: 0
-                    
-                    if (port <= 0) {
-                        Log.e(TAG, "无效的端口号: $port")
-                        return@launch
-                    }
-                    
-                    withContext(Dispatchers.IO) {
-                        // 关闭可能存在的旧服务器
-                        serverSocket?.close()
-                        
-                        // 创建新服务器
-                        serverSocket = ServerSocket(port)
-                    }
-                    
-                    Log.d(TAG, "TCP流量统计服务器已启动，端口: $port")
-                    
-                    try {
-                        while (scope.isActive && running.get() && serverSocket?.isClosed == false) {
-                            try {
-                                // 在IO线程上下文中接受连接
-                                val newSocket = withContext(Dispatchers.IO) {
-                                    // 设置超时，防止阻塞
-                                    serverSocket?.soTimeout = 2000 // 增加超时时间，减少CPU使用
-                                    serverSocket?.accept()
-                                } ?: continue
-                                
-                                Log.d(TAG, "接收到TCP流量统计连接")
-                                
-                                try {
-                                    withContext(Dispatchers.IO) {
-                                        newSocket.soTimeout = 1000
-                                        val inputStream = newSocket.getInputStream()
-                                        
-                                        when (val bytesRead = inputStream.read(buffer)) {
-                                            16 -> scope.launch { processStats() }
-                                            -1 -> { /* 连接关闭 */ }
-                                            else -> Log.w(TAG, "读取异常: $bytesRead/16 字节")
-                                        }
-                                    }
-                                } catch (e: java.net.SocketTimeoutException) {
-                                    // 超时忽略
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "读取TCP流量数据失败: ${e.message}")
-                                } finally {
-                                    withContext(Dispatchers.IO) {
-                                        try {
-                                            newSocket.close()
-                                        } catch (e: Exception) {
-                                            // 忽略关闭错误
-                                        }
-                                    }
-                                }
-                                
-                                // 读取完成后等待一段时间，减少CPU使用
-                                delay(1.seconds)
-                            } catch (e: java.net.SocketTimeoutException) {
-                                // accept超时忽略
-                            } catch (e: Exception) {
-                                if (running.get()) {
-                                    Log.e(TAG, "TCP服务器异常: ${e.message}")
-                                    delay(ERROR_RETRY_DELAY)
-                                }
-                            }
-                        }
-                    } finally {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                serverSocket?.close()
-                                serverSocket = null
-                            } catch (e: Exception) {
-                                // 忽略关闭错误
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "启动TCP流量统计服务器失败: ${e.message}")
-                }
-            }
-        }
-        
-        private fun processStats() {
-            runCatching {
-                stat.position(0)
-                val tx = stat.getLong(0)
-                val rx = stat.getLong(8)
-                val now = SystemClock.elapsedRealtime()
-                val timeDelta = now - lastStatsTime
-                
-                if (timeDelta >= RATE_UPDATE_INTERVAL.inWholeMilliseconds * 2) {
-                    // 计算速率
-                    val txDelta = if (tx >= lastTx) tx - lastTx else tx
-                    val rxDelta = if (rx >= lastRx) rx - lastRx else rx
-                    
-                    txRate = ((txDelta * 1000) / timeDelta).coerceAtLeast(0)
-                    rxRate = ((rxDelta * 1000) / timeDelta).coerceAtLeast(0)
-                    
-                    lastTx = tx
-                    lastRx = rx
-                    lastStatsTime = now
-                    
-                    // 只在有明显流量变化时输出日志
-                    if (txRate > 1024 || rxRate > 1024) {
-                        Log.d(TAG, "流量统计 - 上传: ${ByteUtils.formatBytesSpeed(txRate)}, 下载: ${ByteUtils.formatBytesSpeed(rxRate)}")
-                    }
-                }
-                
-                // 更新总流量
-                txTotal = tx
-                rxTotal = rx
-            }.onFailure { Log.e(TAG, "处理统计失败", it) }
-        }
-
-        fun getCurrentStats() = ShadowsocksTrafficStats(
-                uploadSpeed = txRate,
-                downloadSpeed = rxRate,
-                uploadTotal = txTotal,
-                downloadTotal = rxTotal
-            )
-
-        fun stop() {
-            if (running.getAndSet(false)) {
-                serverSocket?.close()
-                serverSocket = null
-                scope.coroutineContext.cancelChildren()
-            }
-        }
     }
 }
-
