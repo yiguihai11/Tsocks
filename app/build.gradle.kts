@@ -21,15 +21,17 @@ android {
         // 设置 APK 文件名：将 archivesBaseName 属性设置为 "$applicationId-$versionName"
         setProperty("archivesBaseName", "$applicationId-$versionName")
 
-        externalNativeBuild.ndkBuild {
-            // 使用 addAll 而非 +=，更符合 Kotlin DSL 风格
-            arguments.addAll(
-                listOf(
-                    "APP_CFLAGS+=-DPKGNAME=com/yiguihai/tsocks -ffile-prefix-map=${rootDir}=.",
-                    "APP_LDFLAGS+=-Wl,--build-id=none",
-                    "-j${Runtime.getRuntime().availableProcessors()}"
-                )
-            )
+        // 使用稳定的 NDK 构建配置方式
+        externalNativeBuild {
+            ndkBuild {
+                // 正确传递编译和链接标志
+                arguments("NDK_APPLICATION_MK=${project.file("src/main/jni/Application.mk")}")
+                arguments("APP_CFLAGS+=-DPKGNAME=com/yiguihai/tsocks")
+                arguments("APP_CFLAGS+=-ffile-prefix-map=${rootDir}=.")
+                arguments("APP_LDFLAGS+=-Wl,--build-id=none")
+                // 添加多线程编译参数
+                arguments("-j${Runtime.getRuntime().availableProcessors()}")
+            }
         }
     }
 
@@ -122,7 +124,7 @@ cargo {
 
             // toolchain.target 这里应为当前正在编译的 target triple（例如 "x86_64-linux-android"），
             // 如果可能为空可添加默认值
-            val currentTarget = toolchain.target ?: "x86_64-linux-android"
+            val currentTarget: String = toolchain.target as? String ?: "x86_64-linux-android"
             val targetPath = File("target", "$currentTarget/$profile/lib$libname.so").path
             spec.environment("RUST_ANDROID_GRADLE_TARGET", targetPath)
         }
@@ -171,7 +173,7 @@ val ndkDir = android.ndkDirectory.absolutePath
 val osName = System.getProperty("os.name").lowercase()
 val toolchainDir = if (osName.contains("windows")) "windows" else "linux"
 val toolchainPath = "$ndkDir/toolchains/llvm/prebuilt/${toolchainDir}-x86_64/bin"
-val minApi = android.defaultConfig.minSdkVersion?.apiLevel ?: 21
+val minApi: Int = android.defaultConfig.minSdkVersion?.apiLevel as? Int ?: 21
 
 // 定义各 ABI 的配置：(ABI, GOARCH, clang 前缀)
 val abiConfigs = listOf(
@@ -223,6 +225,8 @@ dependencies {
     implementation(libs.snakeyaml)
     implementation(libs.androidx.localbroadcastmanager)
     implementation(libs.material3)
+    // 二维码扫描库
+    implementation(libs.zxing.android.embedded)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

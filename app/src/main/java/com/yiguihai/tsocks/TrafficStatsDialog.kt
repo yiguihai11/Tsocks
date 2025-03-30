@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -35,12 +34,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import com.yiguihai.tsocks.ui.theme.TSocksTheme
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.net.Inet4Address
 import java.net.Inet6Address
@@ -57,36 +58,6 @@ class TrafficStatsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        updateUI()
-        observeTrafficStats()
-    }
-
-    private fun observeTrafficStats() {
-        job = lifecycleScope.launch {
-            try {
-                TProxyService.trafficStats.collect { stats ->
-                    if (isFinishing) return@collect
-                    currentUploadSpeed = stats.uploadSpeed
-                    currentDownloadSpeed = stats.downloadSpeed
-                    currentUploadPackets = stats.uploadPackets
-                    currentDownloadPackets = stats.downloadPackets
-                    currentTotalUploadBytes = stats.totalUploadBytes
-                    currentTotalDownloadBytes = stats.totalDownloadBytes
-                    updateUI()
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) return@launch
-                Log.e("TrafficStatsActivity", "接收流量统计失败", e)
-            }
-        }
-    }
-
-    override fun onDestroy() {
-        job?.cancel()
-        super.onDestroy()
-    }
-
-    private fun updateUI() {
         setContent {
             TSocksTheme {
                 Surface(
@@ -111,6 +82,32 @@ class TrafficStatsActivity : ComponentActivity() {
                 }
             }
         }
+        observeTrafficStats()
+    }
+
+    private fun observeTrafficStats() {
+        job = lifecycleScope.launch {
+            TProxyService.trafficStats
+                .catch { e -> 
+                    if (e !is kotlinx.coroutines.CancellationException) {
+                        Log.e("TrafficStats", "流量统计接收失败", e)
+                    }
+                }
+                .collect { stats ->
+                    if (isFinishing) return@collect
+                    currentUploadSpeed = stats.uploadSpeed
+                    currentDownloadSpeed = stats.downloadSpeed
+                    currentUploadPackets = stats.uploadPackets
+                    currentDownloadPackets = stats.downloadPackets
+                    currentTotalUploadBytes = stats.totalUploadBytes
+                    currentTotalDownloadBytes = stats.totalDownloadBytes
+                }
+        }
+    }
+
+    override fun onDestroy() {
+        job?.cancel()
+        super.onDestroy()
     }
 }
 
@@ -144,39 +141,35 @@ fun TrafficStatsDialogContent(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(
+                    Text(
+                        text = stringResource(R.string.network_type, networkInfo.first),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when(networkInfo.first) {
+                            "WIFI" -> Color(0xFF4CAF50)
+                            stringResource(R.string.mobile_data) -> Color(0xFF2196F3)
+                            "VPN" -> Color(0xFFFF9800)
+                            else -> Color.Gray
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "网络类型: ${networkInfo.first}",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = when(networkInfo.first) {
-                                "WIFI" -> Color(0xFF4CAF50)
-                                "移动数据" -> Color(0xFF2196F3)
-                                "VPN" -> Color(0xFFFF9800)
-                                else -> Color.Gray
-                            }
-                        )
-                    }
+                            .padding(bottom = 16.dp)
+                    )
                     
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     
                     Text(
-                        text = "TUN流量统计",
+                        text = stringResource(R.string.tun_traffic_stats),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                     
                     listOf(
-                        Pair("上传速度:", "$uploadSpeed (总: $totalUploadBytes)"),
-                        Pair("下载速度:", "$downloadSpeed (总: $totalDownloadBytes)"),
-                        Pair("上传数据包:", "$uploadPackets pkt/s"),
-                        Pair("下载数据包:", "$downloadPackets pkt/s")
+                        Pair(stringResource(R.string.upload_speed), "(${stringResource(R.string.total)}: $totalUploadBytes) $uploadSpeed"),
+                        Pair(stringResource(R.string.download_speed), "(${stringResource(R.string.total)}: $totalDownloadBytes) $downloadSpeed"),
+                        Pair(stringResource(R.string.upload_packets), "$uploadPackets pkt/s"),
+                        Pair(stringResource(R.string.download_packets), "$downloadPackets pkt/s")
                     ).forEach { (label, value) ->
                         Row(
                             modifier = Modifier
@@ -193,7 +186,7 @@ fun TrafficStatsDialogContent(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     
                     Text(
-                        text = "本地IP地址",
+                        text = stringResource(R.string.local_ip_address),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -237,7 +230,7 @@ fun TrafficStatsDialogContent(
                         onClick = onEnterApp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("进入软件")
+                        Text(stringResource(R.string.enter_app))
                     }
                 }
             }
@@ -247,20 +240,20 @@ fun TrafficStatsDialogContent(
 
 private fun getNetworkInfo(context: Context): Pair<String, String> {
     val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
-    val network = connectivityManager.activeNetwork ?: return Pair("未连接", "")
-    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return Pair("未连接", "")
+    val network = connectivityManager.activeNetwork ?: return Pair(context.getString(R.string.not_connected), "")
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return Pair(context.getString(R.string.not_connected), "")
     
     val interfaceName = connectivityManager.getLinkProperties(network)?.interfaceName ?: ""
     
     val networkType = when {
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> context.getString(R.string.wifi)
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> 
             if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_CONGESTED)) 
-                "移动数据" else "移动数据(低速)"
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "有线网络"
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "蓝牙网络"
-        else -> "其他"
+                context.getString(R.string.mobile_data) else context.getString(R.string.mobile_data_slow)
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> context.getString(R.string.ethernet)
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> context.getString(R.string.bluetooth)
+        else -> context.getString(R.string.other_network)
     }
     
     return Pair(networkType, interfaceName)
@@ -273,8 +266,7 @@ private fun getLocalIPAddresses(): Pair<String, String> = try {
         .filter { !it.isLoopbackAddress }
         .fold(Pair("", "")) { acc, address ->
             when (address) {
-                is Inet4Address -> 
-                    Pair(address.hostAddress ?: acc.first, acc.second)
+                is Inet4Address -> Pair(address.hostAddress ?: acc.first, acc.second)
                 is Inet6Address -> 
                     if (!address.isLinkLocalAddress) 
                         Pair(acc.first, address.hostAddress?.split("%")?.firstOrNull() ?: acc.second)

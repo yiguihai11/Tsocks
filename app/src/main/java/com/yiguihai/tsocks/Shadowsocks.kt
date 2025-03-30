@@ -1,8 +1,11 @@
 package com.yiguihai.tsocks
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +40,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -47,7 +49,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -56,7 +57,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -73,11 +73,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,6 +93,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import android.app.Activity
+import androidx.activity.ComponentActivity
 
 // Data models for the configuration
 data class ShadowsocksConfig(
@@ -820,10 +821,13 @@ fun ServersTab(
     onServersChanged: (List<ServerConfig>) -> Unit,
     onBalancerChanged: (BalancerConfig) -> Unit
 ) {
-    var serversList by remember { mutableStateOf(servers) }
-    var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
-    var balancerConfig by remember { mutableStateOf(balancer) }
     val context = LocalContext.current
+    var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
+    // 选中的服务器索引（在非负载均衡模式下使用）
+    var selectedServerIndex by remember { mutableStateOf<Int?>(null) }
+    var balancerConfig by remember { mutableStateOf(balancer) }
+    var serversList by remember { mutableStateOf(servers) }
+    
     // 存储IP地址对应的国旗资源ID
     val countryFlags = remember { mutableStateMapOf<String, Int?>() }
     // 存储IP地址对应的网络类型
@@ -834,56 +838,55 @@ fun ServersTab(
     val tcpingResults = remember { mutableStateMapOf<String, String>() }
     val coroutineScope = rememberCoroutineScope()
     
-    // 选中的服务器索引（在非负载均衡模式下使用）
-    var selectedServerIndex by remember { mutableStateOf<Int?>(null) }
-    
     // 测试状态变量
     var isPingTesting by remember { mutableStateOf(false) }
     var isTcpingTesting by remember { mutableStateOf(false) }
-    var testJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // 明确指定类型为Job?
+    var testJob by remember { mutableStateOf<Job?>(null) }
     
-    // 初始化选中服务器（在非负载均衡模式下）
-    LaunchedEffect(balancerConfig.enable, serversList) {
-        if (!balancerConfig.enable) {
-            // 在非负载均衡模式下，查找第一个未禁用的服务器作为默认选中
-            val enabledIndex = serversList.indexOfFirst { !it.disabled }
-            selectedServerIndex = if (enabledIndex >= 0) enabledIndex else null
-            
-            // 更新服务器启用状态，确保只有一个服务器启用
-            if (serversList.isNotEmpty()) {
-                val updatedServers = serversList.mapIndexed { index, server ->
-                    server.copy(disabled = index != selectedServerIndex)
+    // 添加二维码扫描结果处理器
+    val scanQrLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val ssUri = result.data?.getStringExtra("ssUri")
+            if (ssUri != null) {
+                try {
+                    // 解析SS链接
+                    val server = parseShadowsocksUri(ssUri)
+                    if (server != null) {
+                        // 将解析的服务器添加到列表
+                        val newList = serversList.toMutableList()
+                        newList.add(server)
+                        serversList = newList
+                        onServersChanged(newList)
+                        
+                        // 如果不是负载均衡模式，则设置为单服务器模式的选择项
+                        if (!balancerConfig.enable && serversList.isNotEmpty()) {
+                            // 更新所有服务器状态
+                            val updatedServers = newList.mapIndexed { idx, srv ->
+                                srv.copy(disabled = idx != newList.size - 1)
+                            }
+                            serversList = updatedServers
+                            onServersChanged(updatedServers)
+                            selectedServerIndex = newList.size - 1
+                        }
+                        
+                        Toast.makeText(context, "已扫描导入服务器: ${server.remark}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "无效的SS链接格式", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Log.e("Shadowsocks", "导入SS链接失败", e)
                 }
-                serversList = updatedServers
-                onServersChanged(updatedServers)
-            }
-        } else {
-            // 在负载均衡模式下，启用所有服务器
-            val allEnabled = serversList.map { server ->
-                if (server.disabled) server.copy(disabled = false) else server
-            }
-            if (allEnabled != serversList) {
-                serversList = allEnabled
-                onServersChanged(allEnabled)
             }
         }
     }
     
-    // 加载国旗信息
-    LaunchedEffect(Unit) {
-        coroutineScope.launch {
-            serversList.forEach { server ->
-                if (!countryFlags.containsKey(server.address)) {
-                    val flagResId = GeoIpUtils.getCountryFlagResId(context, server.address)
-                    countryFlags[server.address] = flagResId
-                    
-                    // 如果没有找到国旗资源，可能是特殊网络
-                    if (flagResId == null) {
-                        networkTypes[server.address] = GeoIpUtils.getNetworkType(server.address)
-                    }
-                }
-            }
-        }
+    // 初始化选中服务器（在非负载均衡模式下）
+    LaunchedEffect(balancerConfig.enable, serversList) {
+        // ... existing code ...
     }
 
     Column(
@@ -903,38 +906,122 @@ fun ServersTab(
                 style = MaterialTheme.typography.headlineSmall
             )
             
-            // 负载均衡开关
-            Column(horizontalAlignment = Alignment.End) {
-                Text(text = if (balancerConfig.enable) "负载均衡模式" else "单服务器模式",
-                     style = MaterialTheme.typography.bodyMedium,
-                     modifier = Modifier.padding(bottom = 4.dp))
-                Switch(
-                    checked = balancerConfig.enable,
-                    onCheckedChange = { isEnabled ->
-                        val newBalancer = balancerConfig.copy(enable = isEnabled)
-                        balancerConfig = newBalancer
-                        onBalancerChanged(newBalancer)
-                        
-                        if (isEnabled) {
-                            // 进入负载均衡模式，启用所有服务器
-                            val allEnabled = serversList.map { server ->
-                                if (server.disabled) server.copy(disabled = false) else server
-                            }
-                            serversList = allEnabled
-                            onServersChanged(allEnabled)
-                        } else {
-                            // 进入单服务器模式，选择第一个服务器，禁用其他所有服务器
-                            if (serversList.isNotEmpty()) {
-                                selectedServerIndex = 0
-                                val singleEnabled = serversList.mapIndexed { index, server ->
-                                    server.copy(disabled = index != 0)
+            // 添加导入和负载均衡控制的Row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                // 添加+按钮(导入)
+                var showImportMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(
+                        onClick = { showImportMenu = true }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "导入")
+                    }
+                    
+                    // 下拉菜单
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = showImportMenu,
+                        onDismissRequest = { showImportMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("从剪贴板导入") },
+                            onClick = {
+                                showImportMenu = false
+                                // 导入SS链接逻辑
+                                val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clipData = clipboardManager.primaryClip
+                                if (clipData != null && clipData.itemCount > 0) {
+                                    val clipText = clipData.getItemAt(0).text.toString()
+                                    // 检查是否为ss://链接
+                                    if (clipText.trim().startsWith("ss://")) {
+                                        try {
+                                            // 解析SS链接
+                                            val server = parseShadowsocksUri(clipText.trim())
+                                            if (server != null) {
+                                                // 将解析的服务器添加到列表
+                                                val newList = serversList.toMutableList()
+                                                newList.add(server)
+                                                serversList = newList
+                                                onServersChanged(newList)
+                                                
+                                                // 如果不是负载均衡模式，则设置为单服务器模式的选择项
+                                                if (!balancerConfig.enable && serversList.isNotEmpty()) {
+                                                    // 更新所有服务器状态
+                                                    val updatedServers = newList.mapIndexed { idx, srv ->
+                                                        srv.copy(disabled = idx != newList.size - 1)
+                                                    }
+                                                    serversList = updatedServers
+                                                    onServersChanged(updatedServers)
+                                                    selectedServerIndex = newList.size - 1
+                                                }
+                                                
+                                                Toast.makeText(context, "已导入服务器: ${server.remark}", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "无效的SS链接格式", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            Log.e("Shadowsocks", "导入SS链接失败", e)
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "剪贴板内容不是SS链接", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "剪贴板为空", Toast.LENGTH_SHORT).show()
                                 }
-                                serversList = singleEnabled
-                                onServersChanged(singleEnabled)
+                            }
+                        )
+                        
+                        DropdownMenuItem(
+                            text = { Text("扫码导入") },
+                            onClick = {
+                                showImportMenu = false
+                                // 启动二维码扫描活动
+                                val intent = Intent(context, com.yiguihai.tsocks.utils.QRScannerActivity::class.java)
+                                // 使用Activity Result API获取扫描结果
+                                scanQrLauncher.launch(intent)
+                            }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // 负载均衡开关
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(text = if (balancerConfig.enable) "负载均衡模式" else "单服务器模式",
+                         style = MaterialTheme.typography.bodyMedium,
+                         modifier = Modifier.padding(bottom = 4.dp))
+                    Switch(
+                        checked = balancerConfig.enable,
+                        onCheckedChange = { isEnabled ->
+                            val newBalancer = balancerConfig.copy(enable = isEnabled)
+                            balancerConfig = newBalancer
+                            onBalancerChanged(newBalancer)
+                            
+                            if (isEnabled) {
+                                // 进入负载均衡模式，启用所有服务器
+                                val allEnabled = serversList.map { server ->
+                                    if (server.disabled) server.copy(disabled = false) else server
+                                }
+                                serversList = allEnabled
+                                onServersChanged(allEnabled)
+                            } else {
+                                // 进入单服务器模式，选择第一个服务器，禁用其他所有服务器
+                                if (serversList.isNotEmpty()) {
+                                    selectedServerIndex = 0
+                                    val singleEnabled = serversList.mapIndexed { index, server ->
+                                        server.copy(disabled = index != 0)
+                                    }
+                                    serversList = singleEnabled
+                                    onServersChanged(singleEnabled)
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
 
@@ -950,7 +1037,7 @@ fun ServersTab(
                     // Ping延迟测试逻辑
                     if (isPingTesting) {
                         // 如果已经在测试中，取消测试
-                        testJob?.cancel()
+                        testJob?.cancel() // Job的cancel方法
                         testJob = null
                         isPingTesting = false
                         return@Button
@@ -1076,7 +1163,7 @@ fun ServersTab(
                     // Tcping延迟测试逻辑
                     if (isTcpingTesting) {
                         // 如果已经在测试中，取消测试
-                        testJob?.cancel()
+                        testJob?.cancel() // Job的cancel方法
                         testJob = null
                         isTcpingTesting = false
                         return@Button
@@ -2213,5 +2300,117 @@ fun JsonViewTab(config: ShadowsocksConfig) {
                 contentDescription = "复制JSON"
             )
         }
+    }
+}
+
+// 函数放在Shadowsocks.kt文件中，class ShadowsocksManager的companion object外部
+/**
+ * 解析Shadowsocks URI (SIP002格式)
+ * @param uri SS URI字符串，格式为ss://userinfo@hostname:port[/?plugin][#tag]
+ * @return 解析后的ServerConfig对象，解析失败则返回null
+ */
+fun parseShadowsocksUri(uri: String): ServerConfig? {
+    try {
+        // 移除ss://前缀
+        val noPrefix = uri.substring(5)
+        
+        // 解析标记（服务器备注）
+        val tagIndex = noPrefix.lastIndexOf('#')
+        val remark = if (tagIndex != -1) {
+            java.net.URLDecoder.decode(noPrefix.substring(tagIndex + 1), "UTF-8")
+        } else {
+            ""
+        }
+        
+        // 截取不含标记的部分
+        val mainPart = if (tagIndex != -1) noPrefix.substring(0, tagIndex) else noPrefix
+        
+        // 查找@符号，分离用户信息和服务器地址
+        val atIndex = mainPart.lastIndexOf('@')
+        if (atIndex == -1) return null
+        
+        val userInfo = mainPart.substring(0, atIndex)
+        val serverPart = mainPart.substring(atIndex + 1)
+        
+        // 解析服务器地址和端口
+        val hostPortParts = serverPart.split(":")
+        if (hostPortParts.size < 2) return null
+        
+        val address = hostPortParts[0]
+        
+        // 处理端口和可能的插件部分
+        val portAndParams = hostPortParts[1]
+        val queryIndex = portAndParams.indexOf('?')
+        
+        val port = if (queryIndex != -1) {
+            portAndParams.substring(0, queryIndex).toInt()
+        } else {
+            portAndParams.toInt()
+        }
+        
+        // 处理插件信息
+        var plugin: String? = null
+        var pluginOpts: String? = null
+        
+        if (queryIndex != -1) {
+            val queryPart = portAndParams.substring(queryIndex)
+            val pluginStartIndex = queryPart.indexOf("plugin=")
+            
+            if (pluginStartIndex != -1) {
+                var pluginEndIndex = queryPart.indexOf('&', pluginStartIndex)
+                if (pluginEndIndex == -1) pluginEndIndex = queryPart.length
+                
+                val pluginValue = java.net.URLDecoder.decode(
+                    queryPart.substring(pluginStartIndex + 7, pluginEndIndex),
+                    "UTF-8"
+                )
+                
+                // 分离插件名称和参数
+                val pluginParts = pluginValue.split(";")
+                plugin = pluginParts[0]
+                
+                if (pluginParts.size > 1) {
+                    // 合并所有参数为一个字符串
+                    pluginOpts = pluginParts.subList(1, pluginParts.size).joinToString(";")
+                }
+            }
+        }
+        
+        // 解码用户信息以获取加密方法和密码
+        val method: String
+        val password: String
+        
+        // 检查用户信息是否为Base64编码
+        if (userInfo.matches(Regex("^[A-Za-z0-9+/]+={0,2}$"))) {
+            // 尝试base64解码
+            val decoded = String(android.util.Base64.decode(userInfo, android.util.Base64.DEFAULT))
+            val parts = decoded.split(":")
+            if (parts.size != 2) return null
+            
+            method = parts[0]
+            password = parts[1]
+        } else {
+            // 对于未编码的用户信息，直接分割
+            val parts = userInfo.split(":")
+            if (parts.size != 2) return null
+            
+            method = parts[0]
+            password = java.net.URLDecoder.decode(parts[1], "UTF-8")
+        }
+        
+        // 创建ServerConfig对象
+        return ServerConfig(
+            disabled = false,
+            address = address,
+            port = port,
+            method = method,
+            password = password,
+            plugin = plugin,
+            plugin_opts = pluginOpts,
+            remark = remark
+        )
+    } catch (e: Exception) {
+        Log.e("Shadowsocks", "解析SS URI失败", e)
+        return null
     }
 }

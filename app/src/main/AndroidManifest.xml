@@ -14,8 +14,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
-    <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="33" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -57,6 +59,12 @@
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:excludeFromRecents="true">
+        </activity>
+
+        <activity
+            android:name=".utils.QRScannerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TSocks">
         </activity>
 
         <service

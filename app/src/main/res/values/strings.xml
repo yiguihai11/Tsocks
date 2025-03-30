@@ -1,3 +1,217 @@
 <resources>
     <string name="app_name">TSocks</string>
+    
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
+    <string name="add">Add</string>
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="refresh">Refresh</string>
+    <string name="settings">Settings</string>
+    <string name="help">Help</string>
+    <string name="about">About</string>
+    
+    <!-- Connection Status -->
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="connecting">Connecting…</string>
+    <string name="disconnecting">Disconnecting…</string>
+    
+    <!-- Notifications -->
+    <string name="vpn_running">VPN is running</string>
+    <string name="tap_to_view_traffic_stats">Tap to view traffic statistics</string>
+    <string name="stop">Stop</string>
+    <string name="vpn_service_warning">VPN Service Warning</string>
+    <string name="vpn_service_stopped">Shadowsocks service stopped</string>
+    <string name="vpn_service_restart_failed">VPN service has been shut down due to multiple startup failures</string>
+    
+    <!-- Traffic Stats -->
+    <string name="traffic_stats">Traffic Statistics</string>
+    <string name="upload">Upload</string>
+    <string name="download">Download</string>
+    <string name="packets">Packets</string>
+    <string name="total">Total</string>
+    <string name="tun_interface">TUN Interface</string>
+    <string name="shadowsocks">Shadowsocks</string>
+    
+    <!-- Service Configuration -->
+    <string name="config_file_path">Config File Path</string>
+    <string name="config_file_content">Config File Content</string>
+    <string name="use_acl">Use ACL file to exclude China IP ranges</string>
+    <string name="no_available_servers">No available server configurations, cannot start service</string>
+    <string name="service_already_running">Service is already running</string>
+    <string name="service_start_error">Error starting service</string>
+    <string name="service_stop_error">Failed to stop service</string>
+    
+    <!-- Error Messages -->
+    <string name="error">Error</string>
+    <string name="warning">Warning</string>
+    <string name="shadowsocks_start_failed">Shadowsocks service failed to start, please check configuration</string>
+    <string name="invalid_config">Invalid configuration file</string>
+    <string name="process_monitor_error">Process monitor exception</string>
+    <string name="read_output_failed">Failed to read output</string>
+    <string name="extract_acl_failed">Failed to extract ACL file</string>
+    <string name="get_process_id_failed">Failed to get process ID</string>
+    <string name="cleanup_resources_failed">Failed to clean up process resources</string>
+    
+    <!-- Navigation and Screens -->
+    <string name="home">Home</string>
+    <string name="proxy_split">Proxy Split</string>
+    <string name="hotspot_sharing">Hotspot Sharing</string>
+    <string name="optimal_ip_speed">Optimal IP Speed Test</string>
+    <string name="menu">Menu</string>
+    
+    <!-- Home Screen -->
+    <string name="stopped">Stopped</string>
+    <string name="vpn_permission_request_failed">VPN permission request failed</string>
+    
+    <!-- HevSocks5Tunnel Screen -->
+    <string name="tunnel">Tunnel</string>
+    <string name="socks5">Socks5</string>
+    <string name="misc">Misc</string>
+    <string name="yaml">YAML</string>
+    <string name="interface_name">Interface Name</string>
+    <string name="interface_mtu">Interface MTU</string>
+    <string name="multi_queue">Multi-queue</string>
+    <string name="ipv4_address">IPv4 Address</string>
+    <string name="ipv6_address">IPv6 Address</string>
+    <string name="post_up_script">Post Up Script</string>
+    <string name="pre_down_script">Pre Down Script</string>
+    <string name="socks5_server_port">Socks5 Server Port</string>
+    <string name="socks5_server_address">Socks5 Server Address</string>
+    <string name="socks5_udp_relay_mode">Socks5 UDP Relay Mode</string>
+    <string name="socks5_pipeline_mode">Socks5 Handshake Pipeline Mode</string>
+    <string name="socks5_username">Socks5 Server Username</string>
+    <string name="socks5_password">Socks5 Server Password</string>
+    <string name="hide_password">Hide Password</string>
+    <string name="show_password">Show Password</string>
+    <string name="socket_mark">Socket Mark</string>
+    <string name="task_stack_size">Task Stack Size (bytes)</string>
+    <string name="tcp_buffer_size">TCP Buffer Size (bytes)</string>
+    <string name="connect_timeout">Connect Timeout (ms)</string>
+    <string name="read_write_timeout">Read-Write Timeout (ms)</string>
+    <string name="log_file">Log File</string>
+    <string name="log_level">Log Level</string>
+    <string name="pid_file">PID File</string>
+    <string name="file_descriptor_limit">File Descriptor Limit</string>
+    <string name="config_saved">Config saved to: %s</string>
+    <string name="config_save_failed">Failed to save config file</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="copy_yaml">Copy YAML</string>
+    
+    <!-- ProxySplit Screen -->
+    <string name="proxy_mode">VPN Proxy Mode</string>
+    <string name="global_proxy">Global Proxy</string>
+    <string name="bypass_mode">Bypass Mode</string>
+    <string name="only_proxy">Only Proxy</string>
+    <string name="global_proxy_desc">All connections go through proxy</string>
+    <string name="bypass_mode_desc">Specified apps and IP addresses bypass proxy</string>
+    <string name="only_proxy_desc">Only proxy specified apps, others connect directly</string>
+    <string name="china_ip_direct">China IP Direct Connection</string>
+    <string name="exclude_china_ip">Exclude China IP Ranges</string>
+    <string name="exclude_china_ip_desc">When enabled, Shadowsocks will load ACL file to exclude China mainland IP ranges</string>
+    <string name="ip_protocol_settings">IP Protocol Settings</string>
+    <string name="enable_ipv4">Enable IPv4</string>
+    <string name="enable_ipv6">Enable IPv6</string>
+    <string name="dns_v4_server">DNS v4 Server</string>
+    <string name="dns_v6_server">DNS v6 Server</string>
+    <string name="dns_v4_example">Example: 8.8.8.8</string>
+    <string name="dns_v6_example">Example: 2001:4860:4860::8844</string>
+    <string name="proxy_filter_mode">Proxy Mode</string>
+    <string name="app">APP</string>
+    <string name="exclude_ip">Exclude IP</string>
+    <string name="search_app">Search apps</string>
+    <string name="all_apps">All Apps</string>
+    <string name="system_apps">System Apps</string>
+    <string name="user_apps">User Apps</string>
+    <string name="stats_total">Total: %d | Showing: %d | Selected: %d</string>
+    <string name="no_excluded_ip">No excluded IP addresses</string>
+    <string name="add_exclude_ip">Add Exclude IP</string>
+    <string name="input_ipv4_or_ipv6">Input IPv4 or IPv6 address</string>
+    <string name="invalid_ip_format">Invalid IP address format</string>
+    
+    <!-- TrafficStats Dialog -->
+    <string name="network_type">Network Type: %s</string>
+    <string name="tun_traffic_stats">TUN Traffic Statistics</string>
+    <string name="upload_speed">Upload Speed:</string>
+    <string name="download_speed">Download Speed:</string>
+    <string name="upload_packets">Upload Packets:</string>
+    <string name="download_packets">Download Packets:</string>
+    <string name="local_ip_address">Local IP Address</string>
+    <string name="enter_app">Enter App</string>
+    <string name="not_connected">Not Connected</string>
+    <string name="wifi">WIFI</string>
+    <string name="mobile_data">Mobile Data</string>
+    <string name="mobile_data_slow">Mobile Data (Slow)</string>
+    <string name="ethernet">Ethernet</string>
+    <string name="bluetooth">Bluetooth</string>
+    <string name="other_network">Other</string>
+    <string name="get_ip_failed">Failed to get IP address</string>
+    
+    <!-- Utils -->
+    <string name="json_parse_error">JSON parse error: %s</string>
+    <string name="collapse">Collapse</string>
+    <string name="expand">Expand</string>
+    <string name="properties">properties</string>
+    <string name="items">items</string>
+    
+    <!-- GeoIP Utils -->
+    <string name="lan">LAN</string>
+    <string name="local">Local</string>
+    <string name="special">Special</string>
+    <string name="auto_ip">Auto IP</string>
+    <string name="multicast">Multicast</string>
+    <string name="reserved">Reserved</string>
+    <string name="broadcast">Broadcast</string>
+    <string name="geoip_init_failed">GeoIP database initialization failed</string>
+    <string name="get_country_code_failed">Failed to get country code: %s</string>
+    <string name="get_country_name_failed">Failed to get country name: %s</string>
+    
+    <!-- NativeProgramExecutor -->
+    <string name="file_not_found">File not found</string>
+    <string name="no_execute_permission">No execute permission</string>
+    <string name="execute">Execute: %s %s</string>
+    <string name="result">Result - Success: %s, Exit code: %d, Output length: %d</string>
+    <string name="execute_error">Execution error</string>
+    <string name="unknown_error">Unknown error</string>
+    <string name="execution_failed">Execution failed, exit code: %d</string>
+    <string name="get_encrypt_methods_failed">Failed to get encryption methods: %s</string>
+    <string name="got_encrypt_methods">Got %d encryption methods: %s</string>
+    <string name="encrypt_methods_not_found">Encryption methods not found, using defaults</string>
+    <string name="get_protocols_failed">Failed to get protocols: %s</string>
+    <string name="got_protocols">Got %d protocols: %s</string>
+    <string name="protocols_not_found">Protocols not found, using defaults</string>
+    <string name="version">Version: %s</string>
+    <string name="get_version_failed">Failed to get version: %s</string>
+    <string name="unknown_version">Unknown version</string>
+    
+    <!-- Permission Manager -->
+    <string name="vpn_permission_granted">VPN permission granted</string>
+    <string name="vpn_permission_denied">VPN permission denied</string>
+    <string name="notification_permission_granted">Notification permission granted</string>
+    <string name="notification_permission_denied">Notification permission denied</string>
+    <string name="permission_granted">%s permission granted</string>
+    <string name="permission_denied">%s permission denied</string>
+    <string name="permission_already_exists">%s permission already exists</string>
+    <string name="vpn_permission_required">VPN Permission Required</string>
+    <string name="vpn_permission_message">VPN permission is core to the app\'s functionality. Please grant this permission in system settings.</string>
+    <string name="notification_permission_required">Notification Permission Required</string>
+    <string name="notification_permission_message">Notification permission is used to display VPN status and important information.</string>
+    <string name="network_permission_required">Network Permission Required</string>
+    <string name="network_permission_message">Network permission is used for VPN connection and network access.</string>
+    <string name="service_permission_required">Foreground Service Permission Required</string>
+    <string name="service_permission_message">Foreground service permission is used to keep the VPN service running in the background.</string>
+    <string name="battery_permission_required">Battery Optimization Permission Required</string>
+    <string name="battery_permission_message">Battery optimization permission is used to ensure the VPN service isn\'t shut down by system optimization.</string>
+    <string name="boot_permission_required">Boot Permission Required</string>
+    <string name="boot_permission_message">Boot permission is used to automatically start the VPN service after device reboot.</string>
+    <string name="wakelock_permission_required">Wake Lock Permission Required</string>
+    <string name="wakelock_permission_message">Wake Lock permission is used to keep the VPN service running stably.</string>
+    <string name="go_to_settings">Go to Settings</string>
 </resources>

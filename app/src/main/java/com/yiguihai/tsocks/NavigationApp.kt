@@ -15,20 +15,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 
-sealed class Screen(val route: String, val title: String, val icon: @Composable () -> Unit) {
-    data object Home : Screen("home", "主页", { Icon(Icons.Filled.Home, contentDescription = "主页") })
-    data object HevSocks5Tunnel : Screen("hevsocks5tunnel", "HevSocks5Tunnel", { Icon(Icons.Outlined.Settings, contentDescription = "HevSocks5Tunnel") })
-    data object Shadowsocks : Screen("shadowsocks", "Shadowsocks", { Icon(Icons.Outlined.Settings, contentDescription = "Shadowsocks") })
-    data object ProxySplit : Screen("proxysplit", "代理分流", { Icon(Icons.Outlined.FilterAlt, contentDescription = "代理分流") })
-    data object Hotspot : Screen("hotspot", "热点共享", { Icon(Icons.Outlined.WifiTethering, contentDescription = "热点共享") })
-    data object OptimalIp : Screen("optimalip", "优选IP测速", { Icon(Icons.Outlined.Speed, contentDescription = "优选IP测速") })
-    data object About : Screen("about", "关于", { Icon(Icons.Filled.Info, contentDescription = "关于") })
+sealed class Screen(val route: String, val titleResId: Int, val icon: @Composable () -> Unit) {
+    val title: String @Composable get() = stringResource(id = titleResId)
+    
+    data object Home : Screen("home", R.string.home, { 
+        Icon(Icons.Filled.Home, contentDescription = stringResource(R.string.home)) 
+    })
+    data object HevSocks5Tunnel : Screen("hevsocks5tunnel", R.string.app_name, { 
+        Icon(Icons.Outlined.Settings, contentDescription = "HevSocks5Tunnel")
+    })
+    data object Shadowsocks : Screen("shadowsocks", R.string.shadowsocks, { 
+        Icon(Icons.Outlined.Settings, contentDescription = "Shadowsocks") 
+    })
+    data object ProxySplit : Screen("proxysplit", R.string.proxy_split, { 
+        Icon(Icons.Outlined.FilterAlt, contentDescription = stringResource(R.string.proxy_split)) 
+    })
+    data object Hotspot : Screen("hotspot", R.string.hotspot_sharing, { 
+        Icon(Icons.Outlined.WifiTethering, contentDescription = stringResource(R.string.hotspot_sharing)) 
+    })
+    data object OptimalIp : Screen("optimalip", R.string.optimal_ip_speed, { 
+        Icon(Icons.Outlined.Speed, contentDescription = stringResource(R.string.optimal_ip_speed)) 
+    })
+    data object About : Screen("about", R.string.about, { 
+        Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.about)) 
+    })
 }
 
 @Composable
@@ -99,13 +117,15 @@ fun MainApp() {
 @Composable
 fun PageScaffold(screen: Screen, drawerState: DrawerState, content: @Composable () -> Unit) {
     val scope = rememberCoroutineScope()
+    val menuContentDescription = stringResource(R.string.menu)
+    
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(screen.title) },
                 navigationIcon = {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Default.Menu, contentDescription = "菜单")
+                        Icon(Icons.Default.Menu, contentDescription = menuContentDescription)
                     }
                 }
             )

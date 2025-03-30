@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TSocks</string>
+    
+    <!-- 通用 -->
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="add">添加</string>
+    <string name="back">返回</string>
+    <string name="close">关闭</string>
+    <string name="refresh">刷新</string>
+    <string name="settings">设置</string>
+    <string name="help">帮助</string>
+    <string name="about">关于</string>
+    
+    <!-- 连接状态 -->
+    <string name="connect">连接</string>
+    <string name="disconnect">断开</string>
+    <string name="connected">已连接</string>
+    <string name="disconnected">已断开</string>
+    <string name="connecting">连接中…</string>
+    <string name="disconnecting">断开中…</string>
+    
+    <!-- 通知 -->
+    <string name="vpn_running">VPN正在运行</string>
+    <string name="tap_to_view_traffic_stats">点击查看流量统计</string>
+    <string name="stop">停止</string>
+    <string name="vpn_service_warning">VPN服务警告</string>
+    <string name="vpn_service_stopped">Shadowsocks服务已停止</string>
+    <string name="vpn_service_restart_failed">由于多次启动失败，VPN服务已被关闭</string>
+    
+    <!-- 流量统计 -->
+    <string name="traffic_stats">流量统计</string>
+    <string name="upload">上传</string>
+    <string name="download">下载</string>
+    <string name="packets">数据包</string>
+    <string name="total">总计</string>
+    <string name="tun_interface">TUN接口</string>
+    <string name="shadowsocks">Shadowsocks</string>
+    
+    <!-- 服务配置 -->
+    <string name="config_file_path">配置文件路径</string>
+    <string name="config_file_content">配置文件内容</string>
+    <string name="use_acl">使用ACL文件排除中国IP段</string>
+    <string name="no_available_servers">没有可用的服务器配置，无法启动服务</string>
+    <string name="service_already_running">服务已经在运行</string>
+    <string name="service_start_error">启动服务出错</string>
+    <string name="service_stop_error">停止服务失败</string>
+    
+    <!-- 错误提示 -->
+    <string name="error">错误</string>
+    <string name="warning">警告</string>
+    <string name="shadowsocks_start_failed">Shadowsocks服务启动失败，请检查配置</string>
+    <string name="invalid_config">配置文件无效</string>
+    <string name="process_monitor_error">进程监控异常</string>
+    <string name="read_output_failed">读取输出失败</string>
+    <string name="extract_acl_failed">提取ACL文件失败</string>
+    <string name="get_process_id_failed">获取进程ID失败</string>
+    <string name="cleanup_resources_failed">清理进程资源失败</string>
+    
+    <!-- 导航和界面 -->
+    <string name="home">主页</string>
+    <string name="proxy_split">代理分流</string>
+    <string name="hotspot_sharing">热点共享</string>
+    <string name="optimal_ip_speed">优选IP测速</string>
+    <string name="menu">菜单</string>
+    
+    <!-- 主页 -->
+    <string name="stopped">已停止</string>
+    <string name="vpn_permission_request_failed">VPN权限请求失败</string>
+    
+    <!-- HevSocks5Tunnel 界面 -->
+    <string name="tunnel">隧道</string>
+    <string name="socks5">Socks5</string>
+    <string name="misc">杂项</string>
+    <string name="yaml">YAML</string>
+    <string name="interface_name">接口名称</string>
+    <string name="interface_mtu">接口MTU</string>
+    <string name="multi_queue">多队列</string>
+    <string name="ipv4_address">IPv4地址</string>
+    <string name="ipv6_address">IPv6地址</string>
+    <string name="post_up_script">启动后脚本</string>
+    <string name="pre_down_script">停止前脚本</string>
+    <string name="socks5_server_port">Socks5服务器端口</string>
+    <string name="socks5_server_address">Socks5服务器地址</string>
+    <string name="socks5_udp_relay_mode">Socks5 UDP中继模式</string>
+    <string name="socks5_pipeline_mode">Socks5握手使用管道模式</string>
+    <string name="socks5_username">Socks5服务器用户名</string>
+    <string name="socks5_password">Socks5服务器密码</string>
+    <string name="hide_password">隐藏密码</string>
+    <string name="show_password">显示密码</string>
+    <string name="socket_mark">Socket标记</string>
+    <string name="task_stack_size">任务栈大小 (字节)</string>
+    <string name="tcp_buffer_size">TCP缓冲区大小 (字节)</string>
+    <string name="connect_timeout">连接超时 (毫秒)</string>
+    <string name="read_write_timeout">读写超时 (毫秒)</string>
+    <string name="log_file">日志文件</string>
+    <string name="log_level">日志级别</string>
+    <string name="pid_file">PID文件</string>
+    <string name="file_descriptor_limit">文件描述符限制</string>
+    <string name="config_saved">配置文件已保存到: %s</string>
+    <string name="config_save_failed">配置文件保存失败</string>
+    <string name="copied_to_clipboard">已复制到剪贴板</string>
+    <string name="copy_yaml">复制YAML</string>
+    
+    <!-- ProxySplit 界面 -->
+    <string name="proxy_mode">VPN分流模式</string>
+    <string name="global_proxy">全局代理</string>
+    <string name="bypass_mode">绕行模式</string>
+    <string name="only_proxy">仅代理</string>
+    <string name="global_proxy_desc">所有连接均通过代理转发</string>
+    <string name="bypass_mode_desc">指定应用和IP地址不通过代理</string>
+    <string name="only_proxy_desc">仅代理指定的应用，其他应用直连</string>
+    <string name="china_ip_direct">国内IP直连设置</string>
+    <string name="exclude_china_ip">排除国内IP段</string>
+    <string name="exclude_china_ip_desc">启用后Shadowsocks将加载排除中国大陆IP段的ACL文件</string>
+    <string name="ip_protocol_settings">IP协议设置</string>
+    <string name="enable_ipv4">启用IPv4</string>
+    <string name="enable_ipv6">启用IPv6</string>
+    <string name="dns_v4_server">DNS v4服务器</string>
+    <string name="dns_v6_server">DNS v6服务器</string>
+    <string name="dns_v4_example">例如: 8.8.8.8</string>
+    <string name="dns_v6_example">例如: 2001:4860:4860::8844</string>
+    <string name="proxy_filter_mode">代理模式</string>
+    <string name="app">应用</string>
+    <string name="exclude_ip">排除IP</string>
+    <string name="search_app">搜索应用</string>
+    <string name="all_apps">全部应用</string>
+    <string name="system_apps">系统应用</string>
+    <string name="user_apps">用户应用</string>
+    <string name="stats_total">总计: %d | 显示: %d | 已选: %d</string>
+    <string name="no_excluded_ip">暂无排除IP地址</string>
+    <string name="add_exclude_ip">添加排除IP</string>
+    <string name="input_ipv4_or_ipv6">输入IPv4或IPv6地址</string>
+    <string name="invalid_ip_format">无效的IP地址格式</string>
+    
+    <!-- 流量统计对话框 -->
+    <string name="network_type">网络类型: %s</string>
+    <string name="tun_traffic_stats">TUN流量统计</string>
+    <string name="upload_speed">上传速度:</string>
+    <string name="download_speed">下载速度:</string>
+    <string name="upload_packets">上传数据包:</string>
+    <string name="download_packets">下载数据包:</string>
+    <string name="local_ip_address">本地IP地址</string>
+    <string name="enter_app">进入软件</string>
+    <string name="not_connected">未连接</string>
+    <string name="wifi">WIFI</string>
+    <string name="mobile_data">移动数据</string>
+    <string name="mobile_data_slow">移动数据(低速)</string>
+    <string name="ethernet">有线网络</string>
+    <string name="bluetooth">蓝牙网络</string>
+    <string name="other_network">其他</string>
+    <string name="get_ip_failed">获取IP地址失败</string>
+    
+    <!-- 工具类 -->
+    <string name="json_parse_error">JSON解析错误: %s</string>
+    <string name="collapse">折叠</string>
+    <string name="expand">展开</string>
+    <string name="properties">属性</string>
+    <string name="items">项</string>
+    
+    <!-- GeoIP工具 -->
+    <string name="lan">局域网</string>
+    <string name="local">本地</string>
+    <string name="special">特殊</string>
+    <string name="auto_ip">自动IP</string>
+    <string name="multicast">组播</string>
+    <string name="reserved">保留</string>
+    <string name="broadcast">广播</string>
+    <string name="geoip_init_failed">初始化GeoIP数据库失败</string>
+    <string name="get_country_code_failed">获取国家代码失败: %s</string>
+    <string name="get_country_name_failed">获取国家名称失败: %s</string>
+    
+    <!-- 原生程序执行器 -->
+    <string name="file_not_found">文件不存在</string>
+    <string name="no_execute_permission">无执行权限</string>
+    <string name="execute">执行: %s %s</string>
+    <string name="result">结果 - 成功: %s, 退出码: %d, 输出长度: %d</string>
+    <string name="execute_error">执行出错</string>
+    <string name="unknown_error">未知错误</string>
+    <string name="execution_failed">执行失败，退出码: %d</string>
+    <string name="get_encrypt_methods_failed">获取加密方法失败: %s</string>
+    <string name="got_encrypt_methods">获取到 %d 种加密方法: %s</string>
+    <string name="encrypt_methods_not_found">未找到加密方法，使用默认值</string>
+    <string name="get_protocols_failed">获取协议失败: %s</string>
+    <string name="got_protocols">获取到 %d 种协议: %s</string>
+    <string name="protocols_not_found">未找到协议，使用默认值</string>
+    <string name="version">版本: %s</string>
+    <string name="get_version_failed">获取版本失败: %s</string>
+    <string name="unknown_version">未知版本</string>
+    
+    <!-- 权限管理器 -->
+    <string name="vpn_permission_granted">VPN 权限已授予</string>
+    <string name="vpn_permission_denied">VPN 权限被拒绝</string>
+    <string name="notification_permission_granted">通知权限已授予</string>
+    <string name="notification_permission_denied">通知权限被拒绝</string>
+    <string name="permission_granted">%s 权限已授予</string>
+    <string name="permission_denied">%s 权限被拒绝</string>
+    <string name="permission_already_exists">%s 权限已存在</string>
+    <string name="vpn_permission_required">需要 VPN 权限</string>
+    <string name="vpn_permission_message">VPN 权限是应用的核心功能，请在系统设置中授予权限。</string>
+    <string name="notification_permission_required">需要通知权限</string>
+    <string name="notification_permission_message">通知权限用于显示 VPN 状态和重要信息。</string>
+    <string name="network_permission_required">需要网络权限</string>
+    <string name="network_permission_message">网络权限用于 VPN 连接和网络访问。</string>
+    <string name="service_permission_required">需要前台服务权限</string>
+    <string name="service_permission_message">前台服务权限用于保持 VPN 服务在后台运行。</string>
+    <string name="battery_permission_required">需要电池优化权限</string>
+    <string name="battery_permission_message">电池优化权限用于确保 VPN 服务不会被系统优化关闭。</string>
+    <string name="boot_permission_required">需要开机自启动权限</string>
+    <string name="boot_permission_message">开机自启动权限用于在设备重启后自动启动 VPN 服务。</string>
+    <string name="wakelock_permission_required">需要 Wake Lock 权限</string>
+    <string name="wakelock_permission_message">Wake Lock 权限用于保持 VPN 服务稳定运行。</string>
+    <string name="go_to_settings">去设置</string>
+</resources> 

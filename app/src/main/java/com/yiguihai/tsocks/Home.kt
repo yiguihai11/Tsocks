@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.BlendMode
@@ -299,7 +300,7 @@ fun StatusCircle() {
                                 try {
                                     context.startActivity(vpnIntent)
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "VPN权限请求失败", e)
+                                    Log.e(TAG, context.getString(R.string.vpn_permission_request_failed), e)
                                 }
                             } else {
                                 // 已有权限，直接启动
@@ -316,7 +317,7 @@ fun StatusCircle() {
                 if (!isRunning) {
                     // 已停止 - 显示紫色文字
                     Text(
-                        text = "已停止",
+                        text = stringResource(R.string.stopped),
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFEE82EE).copy(alpha = breathingAlpha)

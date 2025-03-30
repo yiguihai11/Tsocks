@@ -6,35 +6,26 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
 import android.util.Log
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
-import com.yiguihai.tsocks.utils.ByteUtils
 import com.yiguihai.tsocks.utils.Preferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStreamReader
-import java.net.ServerSocket
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration.Companion.seconds
 
 /**
  * Shadowsocks服务管理器
- * 负责启动和停止Shadowsocks服务，处理ACL配置等
  */
 class ShadowsocksManager {
     companion object {
@@ -43,7 +34,6 @@ class ShadowsocksManager {
         private const val ERROR_CHANNEL_ID = "shadowsocks_error"
         private const val ERROR_NOTIFICATION_ID = 1001
         private val RESTART_DELAY = 1.seconds
-        private val ERROR_RETRY_DELAY = 1.seconds
 
         private var isRunning = AtomicBoolean(false)
         private var process: Process? = null
@@ -55,80 +45,85 @@ class ShadowsocksManager {
         
         /**
          * 启动Shadowsocks服务
-         * @param context 应用上下文
-         * @return 是否成功启动
          */
         suspend fun startService(context: Context): Boolean {
             if (isRunning.get()) {
-                Log.i(TAG, "Shadowsocks服务已经在运行")
+                Log.i(TAG, context.getString(R.string.service_already_running))
                 return true
             }
             
             val preferences = Preferences.getInstance(context)
             val ssConfig = preferences.getShadowsocksConfig()
             
-            // 检查是否有可用的服务器配置
+            // 检查是否有可用服务器配置
             if (ssConfig.servers.isEmpty() || ssConfig.servers.all { it.disabled }) {
-                Log.e(TAG, "没有可用的服务器配置，无法启动服务")
+                Log.e(TAG, context.getString(R.string.no_available_servers))
                 return false
             }
             
             val tmpConfigDir = context.getDir("configs", Context.MODE_PRIVATE)
             val tmpConfigFile = File(tmpConfigDir, "current.json")
             
-            try {
-                // 处理v2ray插件路径
-                val configJson = GsonBuilder().setPrettyPrinting().create().toJson(ssConfig)
-                val jsonObject = JsonParser.parseString(configJson).asJsonObject
+            return try {
+                // 处理配置
+                val gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
+                val jsonObject = JsonParser.parseString(gson.toJson(ssConfig)).asJsonObject
                 
-                // 检查并处理v2ray插件
+                // 处理v2ray插件路径
+                val nativeLibDir = context.applicationInfo.nativeLibraryDir
+                val v2rayPluginPath = "$nativeLibDir/libv2ray-plugin.so"
+                
+                // 配置全局plugin
                 if (jsonObject.has("plugin") && jsonObject.get("plugin").asString == "v2ray-plugin") {
-                    val nativeLibDir = context.applicationInfo.nativeLibraryDir
-                    val v2rayPluginPath = "$nativeLibDir/libv2ray-plugin.so"
                     jsonObject.addProperty("plugin", v2rayPluginPath)
-                    Log.i(TAG, "已更新v2ray插件路径: $v2rayPluginPath")
+                    Log.i(TAG, "配置文件路径: $v2rayPluginPath")
                 }
                 
-                // 在IO调度器中执行文件写入操作，避免阻塞
+                // 配置servers中的plugin
+                jsonObject.getAsJsonArray("servers")?.let { serversArray ->
+                    for (i in 0 until serversArray.size()) {
+                        val serverObj = serversArray.get(i).asJsonObject
+                        if (serverObj.has("plugin") && serverObj.get("plugin").asString == "v2ray-plugin") {
+                            serverObj.addProperty("plugin", v2rayPluginPath)
+                        }
+                    }
+                }
+                
+                // 写入配置文件
                 withContext(Dispatchers.IO) {
-                    // 将配置写入临时文件
-                    FileOutputStream(tmpConfigFile).use { it.write(jsonObject.toString().toByteArray()) }
-                    
-                    // 打印临时配置文件路径和内容
-                    Log.i(TAG, "临时配置文件路径: ${tmpConfigFile.absolutePath}")
-                    Log.i(TAG, "配置文件内容: ${tmpConfigFile.readText()}")
+                    tmpConfigFile.writeText(jsonObject.toString())
+                    Log.i(TAG, "配置文件路径: ${tmpConfigFile.absolutePath}")
+                    Log.i(TAG, "配置文件内容:\n${gson.toJson(JsonParser.parseString(tmpConfigFile.readText()))}")
                 }
                 
                 // 重置重启计数
                 restartCount.set(0)
                 
                 // 构建启动命令
-                val nativeLibDir = context.applicationInfo.nativeLibraryDir
                 val ssLocalPath = "$nativeLibDir/libsslocal.so"
                 val commandArgs = mutableListOf(
                     ssLocalPath,
                     "-c", tmpConfigFile.absolutePath
                 )
                 
-                // 检查是否需要加载ACL文件来排除中国IP
+                // 添加ACL配置
                 if (preferences.getExcludeChinaIp()) {
-                    extractAclFile(context)?.let {
-                        commandArgs.addAll(listOf("--acl", it.absolutePath))
-                        Log.i(TAG, "使用ACL文件排除中国IP段: ${it.absolutePath}")
+                    extractAclFile(context)?.let { aclFile ->
+                        commandArgs.addAll(listOf("--acl", aclFile.absolutePath))
+                        Log.i(TAG, "使用ACL: ${aclFile.absolutePath}")
                     }
                 }
                 
-                // 使用IO调度器启动进程，避免阻塞
+                // 启动进程
                 process = withContext(Dispatchers.IO) {
-                    // 使用ProcessBuilder启动进程
                     ProcessBuilder(commandArgs)
-                        .redirectErrorStream(true) // 合并错误流和输出流
+                        .redirectErrorStream(true)
                         .start()
                 }
                 
                 // 获取进程PID
                 processId = getProcessId(process)
-                Log.i(TAG, "Shadowsocks进程启动，PID: $processId")
+                Log.i(TAG, "服务已启动, PID: $processId")
                 
                 // 读取进程输出
                 startOutputMonitoring()
@@ -138,11 +133,11 @@ class ShadowsocksManager {
                 // 启动进程监控
                 startProcessMonitor(context)
                 
-                return true
+                true
             } catch (e: Exception) {
-                Log.e(TAG, "启动Shadowsocks服务出错", e)
+                Log.e(TAG, "服务启动错误", e)
                 cleanupResources()
-                return false
+                false
             }
         }
 
@@ -152,21 +147,21 @@ class ShadowsocksManager {
         private fun startOutputMonitoring() {
             process?.let { proc ->
                 logJob = serviceScope.launch {
-                    runCatching {
+                    try {
                         BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                             reader.lineSequence()
                                 .takeWhile { isActive }
-                                .forEach { Log.d(TAG, "Shadowsocks输出: $it") }
+                                .forEach { /* 可以选择不记录日志或只记录错误 */ }
                         }
-                    }.onFailure { 
-                        if (isRunning.get()) Log.e(TAG, "读取输出失败", it)
+                    } catch (e: Exception) { 
+                        if (isRunning.get()) Log.e(TAG, "读取输出失败", e)
                     }
                 }
             }
         }
         
         /**
-         * 监控进程状态，在进程意外退出时自动重启
+         * 监控进程状态
          */
         private fun startProcessMonitor(context: Context) {
             serviceScope.launch {
@@ -177,75 +172,72 @@ class ShadowsocksManager {
                         
                         // 检查进程是否是被我们主动停止的
                         if (isRunning.get()) {
-                            Log.w(TAG, "Shadowsocks进程意外退出，退出码: $exitCode")
+                            Log.w(TAG, "VPN服务停止, 错误: $exitCode")
                             
-                            // 尝试重启，但限制重启次数
+                            // 尝试重启，限制重启次数
                             if (restartCount.incrementAndGet() <= MAX_RESTART_ATTEMPTS) {
-                                Log.i(TAG, "尝试重启Shadowsocks服务 (${restartCount.get()}/$MAX_RESTART_ATTEMPTS)")
+                                Log.i(TAG, "正在连接 (${restartCount.get()}/$MAX_RESTART_ATTEMPTS)")
                                 delay(RESTART_DELAY)
                                 cleanupResources()
-                                // 调用挂起函数需要在协程上下文中
                                 startService(context)
                             } else {
-                                Log.e(TAG, "Shadowsocks服务重启失败次数过多，不再尝试重启")
+                                Log.e(TAG, "VPN服务重启失败")
                                 stopService()
-                                
-                                // 关闭整个VPN服务
                                 stopVpnService(context)
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "进程监控异常", e)
+                        Log.e(TAG, "进程监控错误", e)
                     }
                 }
             }
         }
 
         /**
-         * 停止整个VPN服务
+         * 停止VPN服务
          */
         private fun stopVpnService(context: Context) {
             try {
-                Log.i(TAG, "Shadowsocks多次重启失败，正在停止VPN服务...")
-                
                 // 向TProxyService发送停止指令
-                val intent = Intent(context, TProxyService::class.java)
-                intent.action = TProxyService.ACTION_DISCONNECT
-                context.startService(intent)
+                context.startService(Intent(context, TProxyService::class.java).apply {
+                    action = TProxyService.ACTION_DISCONNECT
+                })
                 
-                // 显示通知告知用户
+                // 显示通知
                 showFailureNotification(context)
             } catch (e: Exception) {
-                Log.e(TAG, "停止VPN服务失败", e)
+                Log.e(TAG, "服务停止错误", e)
             }
         }
         
         /**
-         * 显示重启失败通知
+         * 显示失败通知
          */
         private fun showFailureNotification(context: Context) {
-            runCatching {
+            try {
                 val notificationManager = context.getSystemService(NotificationManager::class.java)
                 
-                // 创建通知渠道（如果尚未创建）
+                // 创建通知渠道
                 val channel = NotificationChannel(
                     ERROR_CHANNEL_ID,
-                    "Shadowsocks错误",
+                    context.getString(R.string.error),
                     NotificationManager.IMPORTANCE_HIGH
-                ).apply { description = "Shadowsocks服务错误通知" }
+                ).apply { 
+                    description = context.getString(R.string.shadowsocks_start_failed) 
+                }
                 
                 notificationManager.createNotificationChannel(channel)
                 
-                // 创建打开应用的Intent
-                val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                // 创建通知
                 val pendingIntent = PendingIntent.getActivity(
-                    context, 0, intent, PendingIntent.FLAG_IMMUTABLE
+                    context, 0, 
+                    context.packageManager.getLaunchIntentForPackage(context.packageName), 
+                    PendingIntent.FLAG_IMMUTABLE
                 )
                 
-                // 构建通知
                 val notification = Notification.Builder(context, ERROR_CHANNEL_ID)
-                    .setContentTitle("Shadowsocks服务已停止")
-                    .setContentText("由于多次启动失败，VPN服务已被关闭")
+                    .setContentTitle(context.getString(R.string.vpn_service_stopped))
+                    .setContentText(context.getString(R.string.vpn_service_restart_failed))
                     .setSmallIcon(R.drawable.baseline_vpn_lock_24)
                     .setAutoCancel(true)
                     .setContentIntent(pendingIntent)
@@ -253,18 +245,20 @@ class ShadowsocksManager {
                 
                 // 显示通知
                 notificationManager.notify(ERROR_NOTIFICATION_ID, notification)
-            }.onFailure { Log.e(TAG, "显示失败通知失败", it) }
+            } catch (e: Exception) { 
+                Log.e(TAG, "显示通知失败", e)
+            }
         }
 
         /**
          * 获取进程ID
          */
-        private fun getProcessId(process: Process?): Int = runCatching {
+        private fun getProcessId(process: Process?): Int = try {
             process?.javaClass?.getDeclaredField("pid")?.apply {
                 isAccessible = true
             }?.getInt(process) ?: -1
-        }.getOrElse { 
-            Log.e(TAG, "获取进程ID失败", it)
+        } catch (e: Exception) { 
+            Log.e(TAG, "获取进程ID失败", e)
             -1
         }
 
@@ -274,8 +268,8 @@ class ShadowsocksManager {
         fun stopService() {
             if (!isRunning.getAndSet(false)) return
             
-            runCatching {
-                // 停止监控
+            try {
+                // 取消日志监控
                 logJob?.cancel()
                 logJob = null
                 
@@ -284,13 +278,15 @@ class ShadowsocksManager {
                 
                 process?.let {
                     it.destroy()
-                    runCatching { it.waitFor() }
+                    try { it.waitFor() } catch(_: Exception) {}
                     if (it.isAlive) it.destroyForcibly()
                 }
                 
                 process = null
                 processId = -1
-            }.onFailure { Log.e(TAG, "停止服务失败", it) }
+            } catch (e: Exception) { 
+                Log.e(TAG, "停止服务失败", e)
+            }
         }
         
         /**
@@ -300,47 +296,30 @@ class ShadowsocksManager {
             logJob?.cancel()
             logJob = null
             
-            process?.let {
-                try {
-                    it.destroy()
-                } catch (e: Exception) {
-                    Log.e(TAG, "清理进程资源失败", e)
-                }
-            }
-            
+            process?.destroy()
             process = null
             processId = -1
         }
 
         /**
-         * 检查Shadowsocks服务是否正在运行
-         * @return 是否正在运行
+         * 检查服务状态
          */
-        fun isServiceRunning(): Boolean {
-            return isRunning.get()
-        }
+        fun isServiceRunning() = isRunning.get()
         
         /**
-         * 从assets提取ACL文件到应用私有目录
+         * 提取ACL文件
          */
         private suspend fun extractAclFile(context: Context): File? {
             val aclDir = context.getDir("acl", Context.MODE_PRIVATE)
             val aclFile = File(aclDir, ACL_FILE_NAME)
             
-            // 使用IO调度器检查文件是否存在
-            val fileExists = withContext(Dispatchers.IO) {
-                aclFile.exists() && aclFile.length() > 0
-            }
-            
-            // 如果文件已存在且有内容，直接返回
-            if (fileExists) {
-                return aclFile
-            }
+            // 文件已存在则直接返回
+            if (aclFile.exists() && aclFile.length() > 0) return aclFile
             
             return try {
                 withContext(Dispatchers.IO) {
                     context.assets.open(ACL_FILE_NAME).use { input ->
-                        FileOutputStream(aclFile).use { output ->
+                        aclFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
                     }

@@ -17,17 +17,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.ContextCompat
+import com.yiguihai.tsocks.R
 
 class PermissionManager(private val activity: ComponentActivity) {
     private val vpnPermissionLauncher: ActivityResultLauncher<Intent> = activity.registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            Log.d("PermissionManager", "VPN 权限已授予")
+            Log.d("PermissionManager", activity.getString(R.string.vpn_permission_granted))
         } else {
-            Log.w("PermissionManager", "VPN 权限被拒绝")
+            Log.w("PermissionManager", activity.getString(R.string.vpn_permission_denied))
             _showVpnPermissionDialog = true
         }
     }
@@ -36,9 +38,9 @@ class PermissionManager(private val activity: ComponentActivity) {
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            Log.d("PermissionManager", "通知权限已授予")
+            Log.d("PermissionManager", activity.getString(R.string.notification_permission_granted))
         } else {
-            Log.w("PermissionManager", "通知权限被拒绝")
+            Log.w("PermissionManager", activity.getString(R.string.notification_permission_denied))
             _showNotificationPermissionDialog = true
         }
     }
@@ -48,9 +50,9 @@ class PermissionManager(private val activity: ComponentActivity) {
     ) { permissions: Map<String, Boolean> ->
         permissions.forEach { (permission: String, isGranted: Boolean) ->
             if (isGranted) {
-                Log.d("PermissionManager", "$permission 权限已授予")
+                Log.d("PermissionManager", activity.getString(R.string.permission_granted, permission))
             } else {
-                Log.w("PermissionManager", "$permission 权限被拒绝")
+                Log.w("PermissionManager", activity.getString(R.string.permission_denied, permission))
                 when (permission) {
                     Manifest.permission.ACCESS_NETWORK_STATE,
                     Manifest.permission.INTERNET -> _showNetworkPermissionDialog = true
@@ -92,7 +94,7 @@ class PermissionManager(private val activity: ComponentActivity) {
         if (vpnIntent != null) {
             vpnPermissionLauncher.launch(vpnIntent)
         } else {
-            Log.d("PermissionManager", "VPN 权限已存在")
+            Log.d("PermissionManager", activity.getString(R.string.permission_already_exists, "VPN"))
         }
     }
 
@@ -102,7 +104,7 @@ class PermissionManager(private val activity: ComponentActivity) {
                 activity,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED -> {
-                Log.d("PermissionManager", "通知权限已存在")
+                Log.d("PermissionManager", activity.getString(R.string.permission_already_exists, activity.getString(R.string.notification_permission_required)))
             }
             else -> {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -209,8 +211,8 @@ fun PermissionDialog(
     message: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
-    confirmText: String = "去设置",
-    dismissText: String = "取消"
+    confirmText: String = stringResource(R.string.go_to_settings),
+    dismissText: String = stringResource(R.string.cancel)
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -245,8 +247,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // VPN 权限对话框
     if (permissionManager.showVpnPermissionDialog) {
         PermissionDialog(
-            title = "需要 VPN 权限",
-            message = "VPN 权限是应用的核心功能，请在系统设置中授予权限。",
+            title = stringResource(R.string.vpn_permission_required),
+            message = stringResource(R.string.vpn_permission_message),
             onDismiss = { permissionManager.updateDialogState("vpn", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("vpn", false)
@@ -258,8 +260,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // 通知权限对话框
     if (permissionManager.showNotificationPermissionDialog) {
         PermissionDialog(
-            title = "需要通知权限",
-            message = "通知权限用于显示 VPN 状态和重要信息。",
+            title = stringResource(R.string.notification_permission_required),
+            message = stringResource(R.string.notification_permission_message),
             onDismiss = { permissionManager.updateDialogState("notification", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("notification", false)
@@ -271,8 +273,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // 网络权限对话框
     if (permissionManager.showNetworkPermissionDialog) {
         PermissionDialog(
-            title = "需要网络权限",
-            message = "网络权限用于 VPN 连接和网络访问。",
+            title = stringResource(R.string.network_permission_required),
+            message = stringResource(R.string.network_permission_message),
             onDismiss = { permissionManager.updateDialogState("network", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("network", false)
@@ -284,8 +286,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // 前台服务权限对话框
     if (permissionManager.showServicePermissionDialog) {
         PermissionDialog(
-            title = "需要前台服务权限",
-            message = "前台服务权限用于保持 VPN 服务在后台运行。",
+            title = stringResource(R.string.service_permission_required),
+            message = stringResource(R.string.service_permission_message),
             onDismiss = { permissionManager.updateDialogState("service", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("service", false)
@@ -297,8 +299,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // 电池优化权限对话框
     if (permissionManager.showBatteryPermissionDialog) {
         PermissionDialog(
-            title = "需要电池优化权限",
-            message = "电池优化权限用于确保 VPN 服务不会被系统优化关闭。",
+            title = stringResource(R.string.battery_permission_required),
+            message = stringResource(R.string.battery_permission_message),
             onDismiss = { permissionManager.updateDialogState("battery", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("battery", false)
@@ -310,8 +312,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // 开机自启动权限对话框
     if (permissionManager.showBootPermissionDialog) {
         PermissionDialog(
-            title = "需要开机自启动权限",
-            message = "开机自启动权限用于在设备重启后自动启动 VPN 服务。",
+            title = stringResource(R.string.boot_permission_required),
+            message = stringResource(R.string.boot_permission_message),
             onDismiss = { permissionManager.updateDialogState("boot", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("boot", false)
@@ -323,8 +325,8 @@ fun PermissionCheck(permissionManager: PermissionManager) {
     // Wake Lock 权限对话框
     if (permissionManager.showWakeLockPermissionDialog) {
         PermissionDialog(
-            title = "需要 Wake Lock 权限",
-            message = "Wake Lock 权限用于保持 VPN 服务稳定运行。",
+            title = stringResource(R.string.wakelock_permission_required),
+            message = stringResource(R.string.wakelock_permission_message),
             onDismiss = { permissionManager.updateDialogState("wakelock", false) },
             onConfirm = { 
                 permissionManager.updateDialogState("wakelock", false)

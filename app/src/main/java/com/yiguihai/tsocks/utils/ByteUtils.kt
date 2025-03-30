@@ -1,7 +1,6 @@
 package com.yiguihai.tsocks.utils
 
 import java.util.Locale
-import kotlin.math.pow
 
 /**
  * 字节和数据格式化工具类
@@ -39,9 +38,7 @@ object ByteUtils {
      * @param bytes 要格式化的字节数
      * @return 格式化后的字符串，如"1.25 MB"
      */
-    fun formatBytes(bytes: Long): String {
-        return formatWithUnits(bytes, SIZE_UNITS)
-    }
+    fun formatBytes(bytes: Long) = formatWithUnits(bytes, SIZE_UNITS)
 
     /**
      * 格式化速率（专用于网络速度）
@@ -49,9 +46,7 @@ object ByteUtils {
      * @param bytesPerSecond 每秒字节数
      * @return 格式化后的速率字符串，如"1.25 MB/s"
      */
-    fun formatSpeed(bytesPerSecond: Long): String {
-        return formatWithUnits(bytesPerSecond, SPEED_UNITS)
-    }
+    fun formatSpeed(bytesPerSecond: Long) = formatWithUnits(bytesPerSecond, SPEED_UNITS)
     
     /**
      * 格式化字节大小并附加"/s"单位
@@ -59,7 +54,5 @@ object ByteUtils {
      * @param bytesPerSecond 每秒字节数
      * @return 格式化后的速率字符串，包含单位，如"1.25 MB/s"
      */
-    fun formatBytesSpeed(bytesPerSecond: Long): String {
-        return formatWithUnits(bytesPerSecond, FULL_SPEED_UNITS)
-    }
+    fun formatBytesSpeed(bytesPerSecond: Long) = formatWithUnits(bytesPerSecond, FULL_SPEED_UNITS)
 } 

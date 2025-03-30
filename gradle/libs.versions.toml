@@ -17,6 +17,7 @@ materialIconsExtended = "1.7.8"
 navigation = "2.8.9"
 plugin = "0.9.6"
 snakeyaml = "2.0"
+zxingAndroidEmbedded = "4.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,6 +43,7 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
 plugin = { module = "org.mozilla.rust-android-gradle:plugin", version.ref = "plugin" }
 snakeyaml = { group = "org.yaml", name = "snakeyaml", version.ref = "snakeyaml" }
+zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

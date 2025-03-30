@@ -6,6 +6,7 @@ import com.maxmind.db.CHMCache
 import com.maxmind.geoip2.DatabaseReader
 import com.maxmind.geoip2.exception.AddressNotFoundException
 import com.murgupluoglu.flagkit.FlagKit
+import com.yiguihai.tsocks.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -63,14 +64,14 @@ object GeoIpUtils {
     )
     
     // 特殊网络标识的映射
-    private val specialNetworksLabels = mapOf(
-        "LAN" to "局域网",
-        "本地" to "本地",
-        "特殊" to "特殊",
-        "APIPA" to "自动IP",
-        "组播" to "组播",
-        "保留" to "保留",
-        "广播" to "广播"
+    private fun getSpecialNetworksLabels(context: Context) = mapOf(
+        "LAN" to context.getString(R.string.lan),
+        "本地" to context.getString(R.string.local),
+        "特殊" to context.getString(R.string.special),
+        "APIPA" to context.getString(R.string.auto_ip),
+        "组播" to context.getString(R.string.multicast),
+        "保留" to context.getString(R.string.reserved),
+        "广播" to context.getString(R.string.broadcast)
     )
     
     // 特殊IP地址的标识
@@ -112,7 +113,7 @@ object GeoIpUtils {
             
             true
         } catch (e: IOException) {
-            Log.e(TAG, "初始化GeoIP数据库失败", e)
+            Log.e(TAG, context.getString(R.string.geoip_init_failed), e)
             false
         }
     }
@@ -122,7 +123,7 @@ object GeoIpUtils {
      * @param ipAddress IP地址字符串
      * @return 国家代码，如果无法获取则返回null
      */
-    private suspend fun getCountryCode(ipAddress: String): String? = withContext(Dispatchers.IO) {
+    private suspend fun getCountryCode(ipAddress: String, context: Context): String? = withContext(Dispatchers.IO) {
         try {
             // 检查是否为特殊网络地址
             for ((network, _) in specialNetworks) {
@@ -140,7 +141,7 @@ object GeoIpUtils {
             // IP地址不在数据库中
             null
         } catch (e: Exception) {
-            Log.e(TAG, "获取国家代码失败: $ipAddress", e)
+            Log.e(TAG, context.getString(R.string.get_country_code_failed, ipAddress), e)
             null
         }
     }
@@ -163,7 +164,7 @@ object GeoIpUtils {
             }
             
             // 获取国家代码
-            val countryCode = getCountryCode(ipAddress) ?: return@withContext null
+            val countryCode = getCountryCode(ipAddress, context) ?: return@withContext null
             
             // 转换为小写以匹配FlagKit的格式
             val countryCodeLower = countryCode.lowercase(Locale.ROOT)
@@ -171,7 +172,7 @@ object GeoIpUtils {
             // 获取国旗资源ID
             FlagKit.getResId(context, countryCodeLower)
         } catch (e: Exception) {
-            Log.e(TAG, "获取国旗资源ID失败: $ipAddress", e)
+            Log.e(TAG, context.getString(R.string.get_country_code_failed, ipAddress), e)
             null
         }
     }
@@ -197,13 +198,13 @@ object GeoIpUtils {
      * @param locale 语言环境，默认为当前系统语言
      * @return 国家名称，如果无法获取则返回null
      */
-    suspend fun getCountryName(ipAddress: String, locale: Locale = Locale.getDefault()): String? = withContext(Dispatchers.IO) {
+    suspend fun getCountryName(ipAddress: String, context: Context, locale: Locale = Locale.getDefault()): String? = withContext(Dispatchers.IO) {
         try {
             // 检查是否为特殊网络地址
             for ((network, label) in specialNetworks) {
                 val (prefix, maskLength) = network.split("/")
                 if (isInNetwork(ipAddress, prefix, maskLength.toInt())) {
-                    return@withContext specialNetworksLabels[label] ?: label
+                    return@withContext getSpecialNetworksLabels(context)[label] ?: label
                 }
             }
             
@@ -215,7 +216,7 @@ object GeoIpUtils {
             // IP地址不在数据库中
             null
         } catch (e: Exception) {
-            Log.e(TAG, "获取国家名称失败: $ipAddress", e)
+            Log.e(TAG, context.getString(R.string.get_country_name_failed, ipAddress), e)
             null
         }
     }

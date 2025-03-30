@@ -12,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -22,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.animateFloatAsState
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
+import com.yiguihai.tsocks.R
 
 /**
  * 自定义JSON可视化组件，支持树形展开/折叠
@@ -33,13 +36,14 @@ fun JsonTreeView(
     onError: ((String) -> Unit)? = null
 ) {
     val lazyListState = rememberLazyListState()
+    val context = LocalContext.current
     
     // 在Composable函数外部解析JSON
     val parseResult = remember(jsonString) {
         try {
             JsonParser.parseString(jsonString).let { Result.success(it) }
         } catch (e: Exception) {
-            onError?.invoke(e.message ?: "JSON解析错误")
+            onError?.invoke(e.message ?: context.getString(R.string.json_parse_error))
             Result.failure(e)
         }
     }
@@ -63,7 +67,10 @@ fun JsonTreeView(
         parseResult.isFailure -> {
             // 显示JSON解析错误
             Text(
-                text = "JSON解析错误: ${parseResult.exceptionOrNull()?.message}",
+                text = stringResource(
+                    R.string.json_parse_error, 
+                    parseResult.exceptionOrNull()?.message ?: ""
+                ),
                 color = Color.Red,
                 modifier = Modifier.padding(16.dp)
             )
@@ -94,7 +101,7 @@ private fun JsonTreeNodeView(
             if (element.isJsonObject || element.isJsonArray) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = if (isExpanded) "折叠" else "展开",
+                    contentDescription = if (isExpanded) stringResource(R.string.collapse) else stringResource(R.string.expand),
                     modifier = Modifier.rotate(rotationDegree),
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -155,7 +162,7 @@ private fun JsonNodeLabel(element: JsonElement, key: String) {
                 }
                 val size = element.asJsonObject.size()
                 withStyle(SpanStyle(color = Color.Gray, fontSize = 12.sp)) {
-                    append(" $size 属性")
+                    append(" $size ${stringResource(R.string.properties)}")
                 }
             }
             element.isJsonArray -> {
@@ -164,7 +171,7 @@ private fun JsonNodeLabel(element: JsonElement, key: String) {
                 }
                 val size = element.asJsonArray.size()
                 withStyle(SpanStyle(color = Color.Gray, fontSize = 12.sp)) {
-                    append(" $size 项")
+                    append(" $size ${stringResource(R.string.items)}")
                 }
             }
             element.isJsonNull -> {

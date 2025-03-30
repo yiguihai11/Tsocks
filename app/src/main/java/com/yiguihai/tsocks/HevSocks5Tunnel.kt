@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -90,11 +91,14 @@ data class MiscConfig(
 )
 
 // 标签页枚举
-enum class ConfigTab(val title: String) {
-    TUNNEL("隧道"),
-    SOCKS5("Socks5"),
-    MISC("杂项"),
-    YAML("YAML")
+enum class ConfigTab(val titleResId: Int) {
+    TUNNEL(R.string.tunnel),
+    SOCKS5(R.string.socks5),
+    MISC(R.string.misc),
+    YAML(R.string.yaml);
+    
+    @Composable
+    fun getTitle(): String = stringResource(id = titleResId)
 }
 
 @Composable
@@ -156,7 +160,7 @@ fun HevSocks5TunnelScreen() {
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
-                        text = { Text(tab.title) }
+                        text = { Text(tab.getTitle()) }
                     )
                 }
             }
@@ -181,38 +185,38 @@ fun TunnelTab(config: TunnelConfig, onConfigChanged: (TunnelConfig) -> Unit) {
             .verticalScroll(scrollState)
     ) {
         LabeledTextField(
-            label = "接口名称",
+            label = stringResource(R.string.interface_name),
             value = config.name,
             onValueChange = { onConfigChanged(config.copy(name = it)) }
         )
         LabeledTextField(
-            label = "接口MTU",
+            label = stringResource(R.string.interface_mtu),
             value = config.mtu.toString(),
             onValueChange = { onConfigChanged(config.copy(mtu = it.toIntOrNull() ?: 8500)) },
             keyboardType = KeyboardType.Number
         )
         SwitchField(
-            label = "多队列",
+            label = stringResource(R.string.multi_queue),
             checked = config.multiQueue,
             onCheckedChange = { onConfigChanged(config.copy(multiQueue = it)) }
         )
         LabeledTextField(
-            label = "IPv4地址",
+            label = stringResource(R.string.ipv4_address),
             value = config.ipv4,
             onValueChange = { onConfigChanged(config.copy(ipv4 = it)) }
         )
         LabeledTextField(
-            label = "IPv6地址",
+            label = stringResource(R.string.ipv6_address),
             value = config.ipv6,
             onValueChange = { onConfigChanged(config.copy(ipv6 = it)) }
         )
         LabeledTextField(
-            label = "启动后脚本",
+            label = stringResource(R.string.post_up_script),
             value = config.postUpScript,
             onValueChange = { onConfigChanged(config.copy(postUpScript = it)) }
         )
         LabeledTextField(
-            label = "停止前脚本",
+            label = stringResource(R.string.pre_down_script),
             value = config.preDownScript,
             onValueChange = { onConfigChanged(config.copy(preDownScript = it)) }
         )
@@ -231,49 +235,49 @@ fun Socks5Tab(config: Socks5Config, onConfigChanged: (Socks5Config) -> Unit) {
             .verticalScroll(scrollState)
     ) {
         LabeledTextField(
-            label = "Socks5服务器端口",
+            label = stringResource(R.string.socks5_server_port),
             value = config.port.toString(),
             onValueChange = { onConfigChanged(config.copy(port = it.toIntOrNull() ?: 1080)) },
             keyboardType = KeyboardType.Number
         )
         LabeledTextField(
-            label = "Socks5服务器地址",
+            label = stringResource(R.string.socks5_server_address),
             value = config.address,
             onValueChange = { onConfigChanged(config.copy(address = it)) }
         )
         DropdownSelector(
-            label = "Socks5 UDP中继模式",
+            label = stringResource(R.string.socks5_udp_relay_mode),
             selectedOption = config.udp,
             options = listOf("tcp", "udp"),
             onOptionSelected = { onConfigChanged(config.copy(udp = it)) }
         )
         SwitchField(
-            label = "Socks5握手使用管道模式",
+            label = stringResource(R.string.socks5_pipeline_mode),
             checked = config.pipeline,
             onCheckedChange = { onConfigChanged(config.copy(pipeline = it)) }
         )
         LabeledTextField(
-            label = "Socks5服务器用户名",
+            label = stringResource(R.string.socks5_username),
             value = config.username,
             onValueChange = { onConfigChanged(config.copy(username = it)) }
         )
         OutlinedTextField(
             value = config.password,
             onValueChange = { onConfigChanged(config.copy(password = it)) },
-            label = { Text("Socks5服务器密码") },
+            label = { Text(stringResource(R.string.socks5_password)) },
             modifier = Modifier.fillMaxWidth(),
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                     Icon(
                         imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                        contentDescription = if (passwordVisible) stringResource(R.string.hide_password) else stringResource(R.string.show_password)
                     )
                 }
             }
         )
         LabeledTextField(
-            label = "Socket标记",
+            label = stringResource(R.string.socket_mark),
             value = config.mark.toString(),
             onValueChange = { onConfigChanged(config.copy(mark = it.toIntOrNull() ?: 0)) },
             keyboardType = KeyboardType.Number
@@ -291,48 +295,48 @@ fun MiscTab(config: MiscConfig, onConfigChanged: (MiscConfig) -> Unit) {
             .verticalScroll(scrollState)
     ) {
         LabeledTextField(
-            label = "任务栈大小 (字节)",
+            label = stringResource(R.string.task_stack_size),
             value = config.taskStackSize.toString(),
             onValueChange = { onConfigChanged(config.copy(taskStackSize = it.toIntOrNull() ?: 86016)) },
             keyboardType = KeyboardType.Number
         )
         LabeledTextField(
-            label = "TCP缓冲区大小 (字节)",
+            label = stringResource(R.string.tcp_buffer_size),
             value = config.tcpBufferSize.toString(),
             onValueChange = { onConfigChanged(config.copy(tcpBufferSize = it.toIntOrNull() ?: 65536)) },
             keyboardType = KeyboardType.Number
         )
         LabeledTextField(
-            label = "连接超时 (毫秒)",
+            label = stringResource(R.string.connect_timeout),
             value = config.connectTimeout.toString(),
             onValueChange = { onConfigChanged(config.copy(connectTimeout = it.toIntOrNull() ?: 5000)) },
             keyboardType = KeyboardType.Number
         )
         LabeledTextField(
-            label = "读写超时 (毫秒)",
+            label = stringResource(R.string.read_write_timeout),
             value = config.readWriteTimeout.toString(),
             onValueChange = { onConfigChanged(config.copy(readWriteTimeout = it.toIntOrNull() ?: 60000)) },
             keyboardType = KeyboardType.Number
         )
         CustomDropdownSelector(
-            label = "日志文件",
+            label = stringResource(R.string.log_file),
             value = config.logFile,
             options = listOf("stdout", "stderr"),
             onValueChange = { onConfigChanged(config.copy(logFile = it)) }
         )
         DropdownSelector(
-            label = "日志级别",
+            label = stringResource(R.string.log_level),
             selectedOption = config.logLevel,
             options = listOf("debug", "info", "warn", "error"),
             onOptionSelected = { onConfigChanged(config.copy(logLevel = it)) }
         )
         LabeledTextField(
-            label = "PID文件",
+            label = stringResource(R.string.pid_file),
             value = config.pidFile,
             onValueChange = { onConfigChanged(config.copy(pidFile = it)) }
         )
         LabeledTextField(
-            label = "文件描述符限制",
+            label = stringResource(R.string.file_descriptor_limit),
             value = config.limitNofile.toString(),
             onValueChange = { onConfigChanged(config.copy(limitNofile = it.toIntOrNull() ?: 65535)) },
             keyboardType = KeyboardType.Number
@@ -466,7 +470,7 @@ fun YamlPreviewTab(yamlContent: String) {
                 val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 val clip = android.content.ClipData.newPlainText("YAML配置", yamlContent)
                 clipboardManager.setPrimaryClip(clip)
-                Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -474,7 +478,7 @@ fun YamlPreviewTab(yamlContent: String) {
         ) {
             Icon(
                 imageVector = Icons.Filled.ContentCopy,
-                contentDescription = "复制YAML"
+                contentDescription = stringResource(R.string.copy_yaml)
             )
         }
     }
