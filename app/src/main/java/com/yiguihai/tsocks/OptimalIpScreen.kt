@@ -876,67 +876,7 @@ fun SpeedTestResultsTab() {
     }
     
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            if (sortedResults.isNotEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    ActionButtonWithLabel(
-                        onClick = {
-                            // 在Composable上下文中获取字符串资源
-                            val clearSuccessMsg = context.getString(R.string.clear_success)
-                            
-                            coroutineScope.launch {
-                                OptimalIpManager.savedTestResults.clear()
-                                snackbarHostState.showSnackbar(clearSuccessMsg)
-                            }
-                        },
-                        icon = Icons.Default.Clear,
-                        contentDescription = stringResource(R.string.clear_results),
-                        label = stringResource(R.string.clear_results),
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                    
-                    ActionButtonWithLabel(
-                        onClick = {
-                            // 在这里获取字符串资源，确保在Composable上下文中访问
-                            val refreshFlagsNotice = context.getString(R.string.refresh_flags_notice)
-                            val importSuccessFormat = context.getString(R.string.import_success_format)
-                            val noMatchingServersMsg = context.getString(R.string.no_matching_servers)
-                            val importFailedFormat = context.getString(R.string.import_failed_format)
-                            
-                            coroutineScope.launch {
-                                // 先移除try-catch包裹，将整个操作逻辑放在协程中处理
-                                val result = runCatching {
-                                    val importedCount = ShadowsocksImporter.importOptimalIpsToConfigFile(context, sortedResults)
-                                    if (importedCount > 0) {
-                                        snackbarHostState.showSnackbar(String.format(importSuccessFormat, importedCount))
-                                        // 将Toast放在协程中调用，不直接在Composable上下文中调用
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, refreshFlagsNotice, Toast.LENGTH_LONG).show()
-                                        }
-                                        true
-                                    } else {
-                                        snackbarHostState.showSnackbar(noMatchingServersMsg)
-                                        false
-                                    }
-                                }.getOrElse { e ->
-                                    Log.e("SpeedTestResultsTab", "导入IP失败", e)
-                                    snackbarHostState.showSnackbar(String.format(importFailedFormat, e.message))
-                                    false
-                                }
-                            }
-                        },
-                        icon = Icons.Default.SaveAlt,
-                        contentDescription = stringResource(R.string.import_to_shadowsocks),
-                        label = stringResource(R.string.import_to_shadowsocks),
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                }
-            }
-        }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -1005,28 +945,6 @@ fun SpeedTestResultsTab() {
                 }
             }
             
-            // 标题和统计信息
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                        Text(
-                    text = "测速结果 (${sortedResults.size})",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                        text = "按下载速度排序，已过滤0速度结果",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-            
             if (sortedResults.isEmpty()) {
                 // 如果没有测试结果，显示提示信息
                 Box(
@@ -1049,6 +967,84 @@ fun SpeedTestResultsTab() {
                         key = { result -> "${result.ip}:${result.port}:${result.timestamp}" }
                     ) { result ->
                         SpeedTestResultItem(result)
+                    }
+                }
+            }
+            
+            // 替换为原来的浮动按钮
+            if (sortedResults.isNotEmpty()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            // 在Composable上下文中获取字符串资源
+                            val clearSuccessMsg = context.getString(R.string.clear_success)
+                            
+                            coroutineScope.launch {
+                                OptimalIpManager.savedTestResults.clear()
+                                snackbarHostState.showSnackbar(clearSuccessMsg)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = stringResource(R.string.clear_results),
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                        Text(stringResource(R.string.clear_results))
+                    }
+                    
+                    Button(
+                        onClick = {
+                            // 在这里获取字符串资源，确保在Composable上下文中访问
+                            val refreshFlagsNotice = context.getString(R.string.refresh_flags_notice)
+                            val importSuccessFormat = context.getString(R.string.import_success_format)
+                            val noMatchingServersMsg = context.getString(R.string.no_matching_servers)
+                            val importFailedFormat = context.getString(R.string.import_failed_format)
+                            
+                            coroutineScope.launch {
+                                // 先移除try-catch包裹，将整个操作逻辑放在协程中处理
+                                val result = runCatching {
+                                    val importedCount = ShadowsocksImporter.importOptimalIpsToConfigFile(context, sortedResults)
+                                    if (importedCount > 0) {
+                                        snackbarHostState.showSnackbar(String.format(importSuccessFormat, importedCount))
+                                        // 将Toast放在协程中调用，不直接在Composable上下文中调用
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, refreshFlagsNotice, Toast.LENGTH_LONG).show()
+                                        }
+                                        true
+                                    } else {
+                                        snackbarHostState.showSnackbar(noMatchingServersMsg)
+                                        false
+                                    }
+                                }.getOrElse { e ->
+                                    Log.e("SpeedTestResultsTab", "导入IP失败", e)
+                                    snackbarHostState.showSnackbar(String.format(importFailedFormat, e.message))
+                                    false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SaveAlt,
+                            contentDescription = stringResource(R.string.import_to_shadowsocks),
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                        Text(stringResource(R.string.import_to_shadowsocks))
                     }
                 }
             }
