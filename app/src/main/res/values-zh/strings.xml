@@ -215,4 +215,26 @@
     <string name="wakelock_permission_required">需要 Wake Lock 权限</string>
     <string name="wakelock_permission_message">Wake Lock 权限用于保持 VPN 服务稳定运行。</string>
     <string name="go_to_settings">去设置</string>
+    
+    <!-- 优选IP测速 -->
+    <string name="clear_results">清除结果</string>
+    <string name="import_to_shadowsocks">导入到Shadowsocks</string>
+    <string name="copy_ip">复制IP</string>
+    <string name="network_info">网络信息</string>
+    <string name="external_ip">外网IP: %s</string>
+    <string name="carrier">运营商: %s</string>
+    <string name="data_center">数据中心: %s</string>
+    <string name="latency">延迟: %s</string>
+    <string name="speed">速度: %s</string>
+    <string name="scroll_to_top">滚动到顶部</string>
+    <string name="scroll_to_bottom">滚动到底部</string>
+    <string name="download_ip_list">从网络获取</string>
+    <string name="copy">复制</string>
+    <string name="clear">清空</string>
+    <string name="total_ip_count">共 %d 个IP地址</string>
+    <string name="refresh_flags_notice">请重新进入Shadowsocks界面以显示国旗</string>
+    <string name="import_success_format">成功导入 %d 个IP地址到Shadowsocks配置</string>
+    <string name="no_matching_servers">未找到符合条件的服务器配置</string>
+    <string name="import_failed_format">导入失败: %s</string>
+    <string name="clear_success">已清除所有测速结果</string>
 </resources> 

@@ -214,4 +214,26 @@
     <string name="wakelock_permission_required">Wake Lock Permission Required</string>
     <string name="wakelock_permission_message">Wake Lock permission is used to keep the VPN service running stably.</string>
     <string name="go_to_settings">Go to Settings</string>
+
+    <!-- OptimalIpScreen -->
+    <string name="clear_results">Clear Results</string>
+    <string name="import_to_shadowsocks">Import to Shadowsocks</string>
+    <string name="copy_ip">Copy IP</string>
+    <string name="network_info">Network Info</string>
+    <string name="external_ip">External IP: %s</string>
+    <string name="carrier">Carrier: %s</string>
+    <string name="data_center">Data Center: %s</string>
+    <string name="latency">Latency: %s</string>
+    <string name="speed">Speed: %s</string>
+    <string name="scroll_to_top">Scroll to top</string>
+    <string name="scroll_to_bottom">Scroll to bottom</string>
+    <string name="download_ip_list">Download IP List</string>
+    <string name="copy">Copy</string>
+    <string name="clear">Clear</string>
+    <string name="total_ip_count">Total: %d IP addresses</string>
+    <string name="refresh_flags_notice">Please refresh the Shadowsocks interface to display flags</string>
+    <string name="import_success_format">Successfully imported %d IP addresses to Shadowsocks config</string>
+    <string name="no_matching_servers">No matching server configurations found</string>
+    <string name="import_failed_format">Import failed: %s</string>
+    <string name="clear_success">All speed test results cleared</string>
 </resources>

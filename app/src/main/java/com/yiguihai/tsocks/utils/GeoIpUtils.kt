@@ -255,6 +255,7 @@ object GeoIpUtils {
     
     /**
      * 释放资源
+     * 在不再需要GeoIP功能时调用
      */
     fun release() {
         databaseReader = null

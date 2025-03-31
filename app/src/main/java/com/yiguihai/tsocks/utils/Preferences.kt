@@ -23,12 +23,14 @@ import com.yiguihai.tsocks.ServerConfig
 import com.yiguihai.tsocks.ShadowsocksConfig
 import com.yiguihai.tsocks.Socks5Config
 import com.yiguihai.tsocks.TunnelConfig
+import com.yiguihai.tsocks.utils.NetworkInfo
+import com.yiguihai.tsocks.utils.SpeedTestConfig
+import com.yiguihai.tsocks.utils.SpeedTestResult
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -108,6 +110,13 @@ class Preferences(context: Context) {
         private const val KEY_SS_LOG = "log"
         private const val KEY_SS_RUNTIME = "runtime"
         
+        // 优化IP首选项常量
+        private const val OPTIMAL_IP_PREF_NAME = "tsocks_preferences"
+        private const val KEY_SPEED_TEST_CONFIG = "speed_test_config"
+        private const val KEY_IMPORTED_IP_LIST = "imported_ip_list"
+        private const val KEY_LAST_NETWORK_INFO = "last_network_info"
+        private const val KEY_TEST_RESULTS = "test_results"
+        
         // 单例模式
         @Volatile
         private var INSTANCE: Preferences? = null
@@ -123,6 +132,7 @@ class Preferences(context: Context) {
     private val proxyPrefs: SharedPreferences = context.getSharedPreferences(PROXY_PREF_NAME, Context.MODE_PRIVATE)
     private val tunnelPrefs: SharedPreferences = context.getSharedPreferences(TUNNEL_PREF_NAME, Context.MODE_PRIVATE)
     private val ssPrefs: SharedPreferences = context.getSharedPreferences(SS_PREF_NAME, Context.MODE_PRIVATE)
+    private val optimalIpPrefs: SharedPreferences = context.getSharedPreferences(OPTIMAL_IP_PREF_NAME, Context.MODE_PRIVATE)
     
     // 代理配置相关变量
     private val configScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -619,78 +629,22 @@ class Preferences(context: Context) {
         ssRuntime.value = RuntimeConfig()
         saveShadowsocksConfigs()
     }
-}
-
-/**
- * 偏好设置工具类
- * 用于保存和加载应用配置
- */
-object Preferences {
-    private const val TAG = "Preferences"
-    private const val PREFS_NAME = "tsocks_preferences"
-    
-    // 常量键值
-    private const val KEY_SPEED_TEST_CONFIG = "speed_test_config"
-    private const val KEY_IMPORTED_IP_LIST = "imported_ip_list"
-    private const val KEY_LAST_NETWORK_INFO = "last_network_info"
-    
-    private val gson = Gson()
-    
-    // 延迟保存相关
-    private val saveJobs = ConcurrentHashMap<String, Job>()
-    private const val SAVE_DELAY = 2000L // 延迟保存时间，单位毫秒
     
     /**
-     * 获取SharedPreferences实例
+     * 优选IP相关方法
      */
-    private fun getPrefs(context: Context): SharedPreferences {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    }
-    
-    /**
-     * 延迟保存数据到SharedPreferences
-     * 如果已有相同key的保存任务在进行中，则取消之前的任务
-     */
-    private fun delayedSave(context: Context, key: String, value: String, scope: CoroutineScope) {
-        // 取消之前的任务
-        saveJobs[key]?.cancel()
-        
-        // 创建新的延迟保存任务
-        val job = scope.launch(Dispatchers.IO) {
-            try {
-                // 延迟一段时间
-                delay(SAVE_DELAY)
-                
-                // 保存数据
-                getPrefs(context).edit().putString(key, value).apply()
-                Log.d(TAG, "延迟保存数据: $key 完成")
-                
-                // 从任务映射中移除
-                saveJobs.remove(key)
-            } catch (e: Exception) {
-                if (e is CancellationException) {
-                    Log.d(TAG, "延迟保存任务 $key 被取消")
-                } else {
-                    Log.e(TAG, "延迟保存数据 $key 失败: ${e.message}", e)
-                }
-            }
-        }
-        
-        // 保存任务到映射
-        saveJobs[key] = job
-    }
     
     /**
      * 保存测速配置
      */
-    suspend fun saveSpeedTestConfig(context: Context, config: SpeedTestConfig) {
+    suspend fun saveSpeedTestConfig(config: SpeedTestConfig) {
         withContext(Dispatchers.IO) {
             try {
                 val json = gson.toJson(config)
-                delayedSave(context, KEY_SPEED_TEST_CONFIG, json, this)
-                Log.d(TAG, "测速配置已计划保存")
+                optimalIpPrefs.edit().putString(KEY_SPEED_TEST_CONFIG, json).apply()
+                Log.d("Preferences", "测速配置已保存")
             } catch (e: Exception) {
-                Log.e(TAG, "准备保存测速配置失败: ${e.message}", e)
+                Log.e("Preferences", "保存测速配置失败: ${e.message}", e)
             }
         }
     }
@@ -699,20 +653,20 @@ object Preferences {
      * 加载测速配置
      * @return 保存的测速配置，如果没有则返回默认配置
      */
-    suspend fun loadSpeedTestConfig(context: Context): SpeedTestConfig {
+    suspend fun loadSpeedTestConfig(): SpeedTestConfig {
         return withContext(Dispatchers.IO) {
             try {
-                val json = getPrefs(context).getString(KEY_SPEED_TEST_CONFIG, null)
+                val json = optimalIpPrefs.getString(KEY_SPEED_TEST_CONFIG, null)
                 if (json != null) {
                     val config = gson.fromJson(json, SpeedTestConfig::class.java)
-                    Log.d(TAG, "加载测速配置: $config")
+                    Log.d("Preferences", "加载测速配置: $config")
                     config
                 } else {
-                    Log.d(TAG, "未找到保存的测速配置，使用默认配置")
+                    Log.d("Preferences", "未找到保存的测速配置，使用默认配置")
                     SpeedTestConfig()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "加载测速配置失败: ${e.message}", e)
+                Log.e("Preferences", "加载测速配置失败: ${e.message}", e)
                 SpeedTestConfig()
             }
         }
@@ -721,14 +675,14 @@ object Preferences {
     /**
      * 保存导入的IP列表
      */
-    suspend fun saveImportedIpList(context: Context, ipList: List<String>) {
+    suspend fun saveImportedIpList(ipList: List<String>) {
         withContext(Dispatchers.IO) {
             try {
                 val json = gson.toJson(ipList)
-                delayedSave(context, KEY_IMPORTED_IP_LIST, json, this)
-                Log.d(TAG, "已计划保存 ${ipList.size} 个IP地址")
+                optimalIpPrefs.edit().putString(KEY_IMPORTED_IP_LIST, json).apply()
+                Log.d("Preferences", "已保存 ${ipList.size} 个IP地址")
             } catch (e: Exception) {
-                Log.e(TAG, "准备保存IP列表失败: ${e.message}", e)
+                Log.e("Preferences", "保存IP列表失败: ${e.message}", e)
             }
         }
     }
@@ -737,21 +691,21 @@ object Preferences {
      * 加载导入的IP列表
      * @return 保存的IP列表，如果没有则返回空列表
      */
-    suspend fun loadImportedIpList(context: Context): List<String> {
+    suspend fun loadImportedIpList(): List<String> {
         return withContext(Dispatchers.IO) {
             try {
-                val json = getPrefs(context).getString(KEY_IMPORTED_IP_LIST, null)
+                val json = optimalIpPrefs.getString(KEY_IMPORTED_IP_LIST, null)
                 if (json != null) {
-                    val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                    val type = object : TypeToken<List<String>>() {}.type
                     val ipList = gson.fromJson<List<String>>(json, type)
-                    Log.d(TAG, "加载IP列表: ${ipList.size} 个地址")
+                    Log.d("Preferences", "加载IP列表: ${ipList.size} 个地址")
                     ipList
                 } else {
-                    Log.d(TAG, "未找到保存的IP列表，返回空列表")
+                    Log.d("Preferences", "未找到保存的IP列表，返回空列表")
                     emptyList()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "加载IP列表失败: ${e.message}", e)
+                Log.e("Preferences", "加载IP列表失败: ${e.message}", e)
                 emptyList()
             }
         }
@@ -760,14 +714,14 @@ object Preferences {
     /**
      * 保存最后一次的网络信息
      */
-    suspend fun saveNetworkInfo(context: Context, networkInfo: NetworkInfo) {
+    suspend fun saveNetworkInfo(networkInfo: NetworkInfo) {
         withContext(Dispatchers.IO) {
             try {
                 val json = gson.toJson(networkInfo)
-                delayedSave(context, KEY_LAST_NETWORK_INFO, json, this)
-                Log.d(TAG, "网络信息已计划保存")
+                optimalIpPrefs.edit().putString(KEY_LAST_NETWORK_INFO, json).apply()
+                Log.d("Preferences", "网络信息已保存")
             } catch (e: Exception) {
-                Log.e(TAG, "准备保存网络信息失败: ${e.message}", e)
+                Log.e("Preferences", "保存网络信息失败: ${e.message}", e)
             }
         }
     }
@@ -776,21 +730,60 @@ object Preferences {
      * 加载最后一次的网络信息
      * @return 保存的网络信息，如果没有则返回空对象
      */
-    suspend fun loadNetworkInfo(context: Context): NetworkInfo {
+    suspend fun loadNetworkInfo(): NetworkInfo {
         return withContext(Dispatchers.IO) {
             try {
-                val json = getPrefs(context).getString(KEY_LAST_NETWORK_INFO, null)
+                val json = optimalIpPrefs.getString(KEY_LAST_NETWORK_INFO, null)
                 if (json != null) {
                     val networkInfo = gson.fromJson(json, NetworkInfo::class.java)
-                    Log.d(TAG, "加载网络信息: $networkInfo")
+                    Log.d("Preferences", "加载网络信息: $networkInfo")
                     networkInfo
                 } else {
-                    Log.d(TAG, "未找到保存的网络信息")
+                    Log.d("Preferences", "未找到保存的网络信息，返回默认值")
                     NetworkInfo()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "加载网络信息失败: ${e.message}", e)
+                Log.e("Preferences", "加载网络信息失败: ${e.message}", e)
                 NetworkInfo()
+            }
+        }
+    }
+
+    /**
+     * 保存测速结果
+     */
+    suspend fun saveTestResults(results: List<SpeedTestResult>) {
+        withContext(Dispatchers.IO) {
+            try {
+                val json = gson.toJson(results)
+                optimalIpPrefs.edit().putString(KEY_TEST_RESULTS, json).apply()
+                Log.d("Preferences", "已保存 ${results.size} 个测速结果")
+            } catch (e: Exception) {
+                Log.e("Preferences", "保存测速结果失败: ${e.message}", e)
+            }
+        }
+    }
+    
+    /**
+     * 加载保存的测速结果
+     * @return 保存的测速结果，如果没有则返回空列表
+     */
+    suspend fun loadTestResults(): List<SpeedTestResult> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val json = optimalIpPrefs.getString(KEY_TEST_RESULTS, null)
+                if (json != null) {
+                    val type = object : TypeToken<List<SpeedTestResult>>() {}.type
+                    val results = gson.fromJson<List<SpeedTestResult>>(json, type)
+                    Log.d("Preferences", "加载测速结果: ${results.size} 个结果")
+                    results
+                } else {
+                    Log.d("Preferences", "未找到保存的测速结果，返回空列表")
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                Log.e("Preferences", "加载测速结果失败: ${e.message}", e)
+                emptyList()
             }
         }
     }

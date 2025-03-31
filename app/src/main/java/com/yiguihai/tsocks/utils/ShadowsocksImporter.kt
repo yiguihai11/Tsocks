@@ -33,7 +33,7 @@ object ShadowsocksImporter {
             }
             
             // 获取当前Shadowsocks配置
-            val preferences = com.yiguihai.tsocks.utils.Preferences.getInstance(context)
+            val preferences = Preferences.getInstance(context)
             val ssConfig = preferences.getShadowsocksConfig()
             
             // 记录修改的服务器数量
@@ -61,9 +61,9 @@ object ShadowsocksImporter {
                     // 替换IP地址
                     val ipIndex = modifiedCount % sortedIpList.size
                     val newIp = sortedIpList[ipIndex].ip
-                    val oldIp = server.server
+                    val oldIp = server.address
                     
-                    servers[i] = server.copy(server = newIp)
+                    servers[i] = server.copy(address = newIp)
                     
                     Log.d(TAG, "服务器 #${i+1}: IP从 $oldIp 替换为 $newIp")
                     modifiedCount++
@@ -76,9 +76,11 @@ object ShadowsocksImporter {
                 val newConfig = ssConfig.copy(servers = servers)
                 
                 // 保存配置
-                preferences.saveShadowsocksConfig(newConfig)
+                preferences.updateShadowsocksConfig(newConfig)
                 
                 Log.d(TAG, "成功更新 $modifiedCount 个服务器的IP地址")
+                Log.d(TAG, "需要重新加载Shadowsocks界面以显示国旗")
+                Log.d(TAG, "Flags need to be reloaded. Please refresh Shadowsocks interface.")
             } else {
                 Log.w(TAG, "没有找到符合条件的服务器配置")
             }
@@ -106,7 +108,7 @@ object ShadowsocksImporter {
             }
             
             // 获取Shadowsocks实例
-            val ssPreferences = com.yiguihai.tsocks.utils.Preferences.getInstance(context)
+            val ssPreferences = Preferences.getInstance(context)
             
             // 获取当前Shadowsocks配置JSON
             val ssConfig = ssPreferences.getShadowsocksConfig()
@@ -157,9 +159,9 @@ object ShadowsocksImporter {
                     // 替换IP地址
                     val ipIndex = modifiedCount % sortedIpList.size
                     val newIp = sortedIpList[ipIndex].ip
-                    val oldIp = serverObj.get("server").asString
+                    val oldIp = serverObj.get("address").asString
                     
-                    serverObj.addProperty("server", newIp)
+                    serverObj.addProperty("address", newIp)
                     
                     Log.d(TAG, "服务器 #${i+1}: IP从 $oldIp 替换为 $newIp")
                     modifiedCount++
@@ -170,9 +172,11 @@ object ShadowsocksImporter {
             if (modifiedCount > 0) {
                 // 转换为新的配置对象并保存
                 val newConfig = gson.fromJson(jsonObject.toString(), ShadowsocksConfig::class.java)
-                ssPreferences.saveShadowsocksConfig(newConfig)
+                ssPreferences.updateShadowsocksConfig(newConfig)
                 
                 Log.d(TAG, "成功更新 $modifiedCount 个服务器的IP地址")
+                Log.d(TAG, "需要重新加载Shadowsocks界面以显示国旗")
+                Log.d(TAG, "Flags need to be reloaded. Please refresh Shadowsocks interface.")
             } else {
                 Log.w(TAG, "没有找到符合条件的服务器配置")
             }

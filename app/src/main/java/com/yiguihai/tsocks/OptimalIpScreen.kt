@@ -49,6 +49,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -79,6 +81,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 优选IP测速ViewModel
@@ -90,10 +98,21 @@ class OptimalIpViewModel : ViewModel() {
     private val _ipInputText = MutableStateFlow("")
     val ipInputText: StateFlow<String> = _ipInputText.asStateFlow()
     
+    // 增加一个状态流用于控制Tab索引
+    private val _selectedTabIndex = MutableStateFlow(0)
+    val selectedTabIndex: StateFlow<Int> = _selectedTabIndex.asStateFlow()
+    
     // 当前测试作业
     private var testJob: Job? = null
     // 上下文引用，用于保存设置
     private var appContext: Context? = null
+
+    /**
+     * 设置当前选中的Tab索引
+     */
+    fun setSelectedTabIndex(index: Int) {
+        _selectedTabIndex.value = index
+    }
 
     /**
      * 初始化，加载保存的配置
@@ -105,11 +124,12 @@ class OptimalIpViewModel : ViewModel() {
         // 使用协程异步加载配置
         viewModelScope.launch {
             // 加载测速配置
-            val savedConfig = Preferences.loadSpeedTestConfig(context)
+            val preferences = Preferences.getInstance(context)
+            val savedConfig = preferences.loadSpeedTestConfig()
             _speedTestConfig.value = savedConfig
             
             // 加载保存的IP列表
-            val savedIpList = Preferences.loadImportedIpList(context)
+            val savedIpList = preferences.loadImportedIpList()
             if (savedIpList.isNotEmpty()) {
                 OptimalIpManager.importedIpList.clear()
                 OptimalIpManager.importedIpList.addAll(savedIpList)
@@ -120,11 +140,60 @@ class OptimalIpViewModel : ViewModel() {
                 _ipInputText.value = OptimalIpManager.importedIpList.joinToString("\n")
             }
             
-            // 加载上次的网络信息
-            val savedNetworkInfo = Preferences.loadNetworkInfo(context)
-            if (savedNetworkInfo.externalIp.isNotEmpty()) {
+            // 加载上次的网络信息，但不主动获取新信息
+            val savedNetworkInfo = preferences.loadNetworkInfo()
+            if (savedNetworkInfo.externalIp.isNotEmpty() && 
+                savedNetworkInfo.externalIp != "获取失败" && 
+                savedNetworkInfo.externalIp != "未能获取") {
                 OptimalIpManager.networkInfo.value = savedNetworkInfo
             }
+            
+            // 加载保存的测速结果
+            val savedResults = preferences.loadTestResults()
+            if (savedResults.isNotEmpty()) {
+                Log.d("OptimalIpViewModel", "加载保存的测速结果: ${savedResults.size} 个")
+                OptimalIpManager.savedTestResults.clear()
+                OptimalIpManager.savedTestResults.addAll(savedResults)
+            }
+            
+            // 不再主动获取网络信息，只在开始测速时获取
+        }
+    }
+    
+    /**
+     * 更新网络信息（运营商和外网IP）
+     */
+    private suspend fun updateNetworkInfo(context: Context) {
+        try {
+            val carrier = NetworkUtils.getCarrierName(context)
+            val networkType = NetworkUtils.getNetworkType(context)
+            val carrierInfo = "$carrier - $networkType"
+            
+            // 尝试获取外网IP
+            var externalIp = NetworkUtils.getExternalIpAddress()
+            var retryCount = 0
+            
+            // 如果获取失败且未超过重试次数，进行重试
+            while (externalIp.isEmpty() && retryCount < 3) {
+                Log.d("OptimalIpViewModel", "外网IP获取失败，正在重试 ${retryCount + 1}/3")
+                delay(1000) // 延迟1秒再重试
+                externalIp = NetworkUtils.getExternalIpAddress()
+                retryCount++
+            }
+            
+            if (externalIp.isEmpty()) {
+                externalIp = "未能获取" // 提供默认值表示获取失败
+                Log.w("OptimalIpViewModel", "无法获取外网IP，已尝试3次")
+            } else {
+                Log.d("OptimalIpViewModel", "成功获取外网IP: $externalIp")
+            }
+            
+            OptimalIpManager.updateNetworkInfo(carrierInfo, externalIp)
+            
+            // 保存网络信息
+            Preferences.getInstance(context).saveNetworkInfo(OptimalIpManager.networkInfo.value)
+        } catch (e: Exception) {
+            Log.e("OptimalIpViewModel", "初始化时获取网络信息失败: ${e.message}", e)
         }
     }
     
@@ -137,7 +206,7 @@ class OptimalIpViewModel : ViewModel() {
         // 异步保存配置
         appContext?.let { context ->
             viewModelScope.launch {
-                Preferences.saveSpeedTestConfig(context, config)
+                Preferences.getInstance(context).saveSpeedTestConfig(config)
             }
         }
     }
@@ -154,7 +223,7 @@ class OptimalIpViewModel : ViewModel() {
         // 异步保存IP列表
         appContext?.let { context ->
             viewModelScope.launch {
-                Preferences.saveImportedIpList(context, ips)
+                Preferences.getInstance(context).saveImportedIpList(ips)
             }
         }
     }
@@ -174,11 +243,11 @@ class OptimalIpViewModel : ViewModel() {
                     _ipInputText.value = ips.joinToString("\n")
                     
                     // 保存下载的IP列表
-                    Preferences.saveImportedIpList(context, ips)
+                    Preferences.getInstance(context).saveImportedIpList(ips)
                 }
             } catch (e: Exception) {
                 Log.e("OptimalIpViewModel", "下载IP列表失败", e)
-                OptimalIpManager.statusMessage.value = "下载IP列表失败: ${e.message}"
+                OptimalIpManager.updateStatusMessage("下载IP列表失败: ${e.message}")
             }
         }
     }
@@ -193,7 +262,7 @@ class OptimalIpViewModel : ViewModel() {
         // 保存空IP列表
         appContext?.let { context ->
             viewModelScope.launch {
-                Preferences.saveImportedIpList(context, emptyList())
+                Preferences.getInstance(context).saveImportedIpList(emptyList())
             }
         }
     }
@@ -212,14 +281,14 @@ class OptimalIpViewModel : ViewModel() {
         
         val ips = OptimalIpManager.importedIpList.toList()
         if (ips.isEmpty()) {
-            OptimalIpManager.statusMessage.value = "请先添加IP地址"
+            OptimalIpManager.updateStatusMessage("请先添加IP地址")
             return
         }
         
         // 设置测试状态为进行中 - 放在前面，这样配置区域会立即隐藏
         OptimalIpManager.isTestingInProgress.value = true
         OptimalIpManager.clearCurrentResults()
-        OptimalIpManager.totalIps.value = ips.size
+        OptimalIpManager.updateTotalIps(ips.size)
         
         testJob = viewModelScope.launch {
             // 获取网络信息
@@ -227,16 +296,35 @@ class OptimalIpViewModel : ViewModel() {
                 val carrier = NetworkUtils.getCarrierName(context)
                 val networkType = NetworkUtils.getNetworkType(context)
                 val carrierInfo = "$carrier - $networkType"
-                val externalIp = NetworkUtils.getExternalIpAddress()
+                
+                // 尝试获取外网IP，添加重试和错误处理
+                var externalIp = NetworkUtils.getExternalIpAddress()
+                var retryCount = 0
+                
+                // 如果获取失败且未超过重试次数，进行重试
+                while (externalIp.isEmpty() && retryCount < 3 && OptimalIpManager.isTestingInProgress.value) {
+                    Log.d("OptimalIpViewModel", "外网IP获取失败，正在重试 ${retryCount + 1}/3")
+                    OptimalIpManager.updateStatusMessage("正在重试获取外网IP...(${retryCount + 1}/3)")
+                    delay(1000) // 延迟1秒再重试
+                    externalIp = NetworkUtils.getExternalIpAddress()
+                    retryCount++
+                }
+                
+                if (externalIp.isEmpty()) {
+                    externalIp = "未能获取" // 提供默认值表示获取失败
+                    Log.w("OptimalIpViewModel", "无法获取外网IP，已尝试3次")
+                    OptimalIpManager.updateStatusMessage("无法获取外网IP，继续测试中...")
+                }
                 
                 OptimalIpManager.updateNetworkInfo(carrierInfo, externalIp)
                 
                 // 保存网络信息
-                Preferences.saveNetworkInfo(context, OptimalIpManager.networkInfo.value)
+                Preferences.getInstance(context).saveNetworkInfo(OptimalIpManager.networkInfo.value)
                 
                 Log.d("OptimalIpViewModel", "获取到网络信息: 运营商=$carrierInfo, 外网IP=$externalIp")
             } catch (e: Exception) {
                 Log.e("OptimalIpViewModel", "获取网络信息失败", e)
+                OptimalIpManager.updateStatusMessage("获取网络信息失败：${e.message}")
             }
             
             // 初始化位置数据
@@ -251,12 +339,12 @@ class OptimalIpViewModel : ViewModel() {
                     config = config,
                     ips = ips,
                     onProgressUpdate = { completed, total ->
-                        OptimalIpManager.currentProgress.value = completed
+                        OptimalIpManager.updateProgress(completed)
                     },
                     onResultUpdate = { result ->
                         // 将结果添加到列表中
                         latencyResults.add(result)
-                        OptimalIpManager.testResults.add(result)
+                        OptimalIpManager.addTestResult(result)
                     }
                 )
                 
@@ -268,30 +356,43 @@ class OptimalIpViewModel : ViewModel() {
                 
                 // 进行下载速度测试
                 if (sortedResults.isNotEmpty() && OptimalIpManager.isTestingInProgress.value) {
-                    OptimalIpManager.currentProgress.value = 0
-                    OptimalIpManager.totalIps.value = sortedResults.size
+                    OptimalIpManager.updateProgress(0)
+                    OptimalIpManager.updateTotalIps(sortedResults.size)
                     
                     SpeedTestUtils.startSpeedTest(
                         config = config,
                         results = sortedResults,
                         onProgressUpdate = { completed, total ->
-                            OptimalIpManager.currentProgress.value = completed
+                            OptimalIpManager.updateProgress(completed)
                         },
                         onResultUpdate = { result ->
                             // 更新结果列表中的元素
-                            val index = OptimalIpManager.testResults.indexOfFirst { it.ip == result.ip }
-                            if (index >= 0) {
-                                OptimalIpManager.testResults[index] = result
-                            }
+                            OptimalIpManager.updateTestResult(result)
                         }
                     )
                 }
                 
                 // 保存测试结果到历史记录
                 OptimalIpManager.saveCurrentResultsToHistory()
+                
+                // 保存测试结果到持久化存储
+                appContext?.let { ctx ->
+                    viewModelScope.launch {
+                        try {
+                            // 保存测试结果到SharedPreferences
+                            Preferences.getInstance(ctx).saveTestResults(OptimalIpManager.savedTestResults.toList())
+                            Log.d("OptimalIpViewModel", "测速结果已保存到存储")
+                        } catch (e: Exception) {
+                            Log.e("OptimalIpViewModel", "保存测速结果失败: ${e.message}", e)
+                        }
+                    }
+                }
+                
+                // 测试完成后，自动切换到测速结果Tab
+                _selectedTabIndex.value = 1
             } catch (e: Exception) {
                 Log.e("OptimalIpViewModel", "测速失败", e)
-                OptimalIpManager.statusMessage.value = "测速失败: ${e.message}"
+                OptimalIpManager.updateStatusMessage("测速失败: ${e.message}")
             } finally {
                 OptimalIpManager.isTestingInProgress.value = false
             }
@@ -314,7 +415,8 @@ fun OptimalIpScreen(
 ) {
     val context = LocalContext.current
     
-    var selectedTabIndex by remember { mutableStateOf(0) }
+    // 从ViewModel中获取选项卡索引
+    val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val tabs = listOf("测速", "测速结果", "待测速IP列表")
     
     // 初始化ViewModel，加载保存的配置
@@ -329,7 +431,7 @@ fun OptimalIpScreen(
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTabIndex == index,
-                    onClick = { selectedTabIndex = index },
+                    onClick = { viewModel.setSelectedTabIndex(index) },
                     text = { Text(title) }
                 )
             }
@@ -348,20 +450,18 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
     val context = LocalContext.current
     val speedTestConfig by viewModel.speedTestConfig.collectAsState()
     
-    val isTestingInProgress = remember { OptimalIpManager.isTestingInProgress }
-    val isTesting by isTestingInProgress
-    val currentProgressState = remember { OptimalIpManager.currentProgress }
-    val currentProgress by currentProgressState
-    val totalIpsState = remember { OptimalIpManager.totalIps }
-    val totalIps by totalIpsState
-    val statusMessageState = remember { OptimalIpManager.statusMessage }
-    val statusMessage by statusMessageState
-    val networkInfoState = remember { OptimalIpManager.networkInfo }
-    val networkInfo by networkInfoState
+    // 创建派生状态，而不是直接引用OptimalIpManager中的mutableState
+    val isTesting by remember { derivedStateOf { OptimalIpManager.isTestingInProgress.value } }
+    val currentProgress by remember { derivedStateOf { OptimalIpManager.currentProgress.value } }
+    val totalIps by remember { derivedStateOf { OptimalIpManager.totalIps.value } }
+    val statusMessage by remember { derivedStateOf { OptimalIpManager.statusMessage.value } }
+    val networkInfo by remember { derivedStateOf { OptimalIpManager.networkInfo.value } }
     
     // 用于自动滚动到底部
     val listState = rememberLazyListState()
-    val testResults = remember { OptimalIpManager.testResults }
+    
+    // 创建测试结果的派生状态，防止直接依赖可变集合
+    val testResults by remember { derivedStateOf { OptimalIpManager.testResults.toList() } }
     
     // 自动滚动到底部
     LaunchedEffect(testResults.size) {
@@ -421,16 +521,49 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
                             .padding(vertical = 4.dp)
                     ) {
                         Text("超时(毫秒): ", modifier = Modifier.width(80.dp))
-                        TextField(
-                            value = speedTestConfig.maxTimeout.toString(),
-                            onValueChange = { value ->
-                                val timeout = value.toIntOrNull() ?: 2000
-                                viewModel.updateTestConfig(speedTestConfig.copy(maxTimeout = timeout))
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
+                        Column {
+                            TextField(
+                                value = speedTestConfig.maxTimeout.toString(),
+                                onValueChange = { value ->
+                                    val timeout = value.toIntOrNull() ?: 2000
+                                    viewModel.updateTestConfig(speedTestConfig.copy(maxTimeout = timeout))
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Text(
+                                text = "单个IP测试的超时时间，ping模式建议1000ms，tcping模式建议2000ms",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Text("并发线程数: ", modifier = Modifier.width(80.dp))
+                        Column {
+                            TextField(
+                                value = speedTestConfig.maxThreads.toString(),
+                                onValueChange = { value ->
+                                    val threads = value.toIntOrNull() ?: 100
+                                    viewModel.updateTestConfig(speedTestConfig.copy(maxThreads = threads))
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Text(
+                                text = "延迟测试的并发线程数，数值越大测试速度越快，但可能导致网络拥堵",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                     
                     Row(
@@ -440,16 +573,23 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
                             .padding(vertical = 4.dp)
                     ) {
                         Text("测速线程数: ", modifier = Modifier.width(80.dp))
-                        TextField(
-                            value = speedTestConfig.speedTestThreads.toString(),
-                            onValueChange = { value ->
-                                val threads = value.toIntOrNull() ?: 5
-                                viewModel.updateTestConfig(speedTestConfig.copy(speedTestThreads = threads))
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
+                        Column {
+                            TextField(
+                                value = speedTestConfig.speedTestThreads.toString(),
+                                onValueChange = { value ->
+                                    val threads = value.toIntOrNull() ?: 5
+                                    viewModel.updateTestConfig(speedTestConfig.copy(speedTestThreads = threads))
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Text(
+                                text = "下载速度测试的并发线程数，建议保持较小值(5-10)以免网络拥堵",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                     
                     Row(
@@ -459,14 +599,21 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
                             .padding(vertical = 4.dp)
                     ) {
                         Text("测速URL: ", modifier = Modifier.width(80.dp))
-                        TextField(
-                            value = speedTestConfig.speedTestUrl,
-                            onValueChange = { value ->
-                                viewModel.updateTestConfig(speedTestConfig.copy(speedTestUrl = value))
-                            },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
+                        Column {
+                            TextField(
+                                value = speedTestConfig.speedTestUrl,
+                                onValueChange = { value ->
+                                    viewModel.updateTestConfig(speedTestConfig.copy(speedTestUrl = value))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Text(
+                                text = "用于下载速度测试的目标URL，建议使用Cloudflare或其他CDN资源",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
             }
@@ -546,7 +693,7 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
                     Text("$currentProgress/$totalIps")
                     Spacer(modifier = Modifier.width(8.dp))
                     LinearProgressIndicator(
-                        progress = if (totalIps > 0) currentProgress.toFloat() / totalIps.toFloat() else 0f,
+                        progress = { if (totalIps > 0) currentProgress.toFloat() / totalIps.toFloat() else 0f },
                         modifier = Modifier.width(100.dp)
                     )
                 }
@@ -566,7 +713,10 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
             state = listState,
             modifier = Modifier.weight(1f)
         ) {
-            items(testResults) { result ->
+            items(
+                items = testResults,
+                key = { result -> result.ip + result.port + result.timestamp }
+            ) { result ->
                 SpeedTestResultItem(result)
             }
         }
@@ -699,44 +849,85 @@ fun SpeedTestResultItem(result: SpeedTestResult) {
 @Composable
 fun SpeedTestResultsTab() {
     val context = LocalContext.current
-    val savedTestResults = remember { OptimalIpManager.savedTestResults }
-    val networkInfoState = remember { OptimalIpManager.networkInfo }
-    val networkInfo by networkInfoState
+    
+    // 使用派生状态，防止直接依赖可变集合
+    val savedTestResults by remember { derivedStateOf { OptimalIpManager.savedTestResults.toList() } }
+    val networkInfo by remember { derivedStateOf { OptimalIpManager.networkInfo.value } }
+    
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     
-    val sortedResults = remember(savedTestResults) {
+    val sortedResults by remember(savedTestResults) {
         // 按照下载速度和延迟排序，过滤掉下载速度为0的结果
-        savedTestResults
-            .filter { it.downloadSpeed > 0 }
-            .sortedWith(
-                compareByDescending<SpeedTestResult> { it.downloadSpeed }
-                    .thenBy { it.latencyMs }
-            )
+        derivedStateOf {
+            savedTestResults
+                .filter { it.downloadSpeed > 0 }
+                .sortedWith(
+                    compareByDescending<SpeedTestResult> { it.downloadSpeed }
+                        .thenBy { it.latencyMs }
+                )
+        }
     }
     
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (sortedResults.isNotEmpty()) {
-                FloatingActionButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            try {
-                                val importedCount = ShadowsocksImporter.importOptimalIpsToConfigFile(context, sortedResults)
-                                if (importedCount > 0) {
-                                    snackbarHostState.showSnackbar("成功导入 $importedCount 个IP地址到Shadowsocks配置")
-                                } else {
-                                    snackbarHostState.showSnackbar("未找到符合条件的服务器配置")
-                                }
-                            } catch (e: Exception) {
-                                Log.e("SpeedTestResultsTab", "导入IP失败", e)
-                                snackbarHostState.showSnackbar("导入失败: ${e.message}")
-                            }
-                        }
-                    }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.SaveAlt, contentDescription = "导入到Shadowsocks")
+                    ActionButtonWithLabel(
+                        onClick = {
+                            // 在Composable上下文中获取字符串资源
+                            val clearSuccessMsg = context.getString(R.string.clear_success)
+                            
+                            coroutineScope.launch {
+                                OptimalIpManager.savedTestResults.clear()
+                                snackbarHostState.showSnackbar(clearSuccessMsg)
+                            }
+                        },
+                        icon = Icons.Default.Clear,
+                        contentDescription = stringResource(R.string.clear_results),
+                        label = stringResource(R.string.clear_results),
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                    
+                    ActionButtonWithLabel(
+                        onClick = {
+                            // 在这里获取字符串资源，确保在Composable上下文中访问
+                            val refreshFlagsNotice = context.getString(R.string.refresh_flags_notice)
+                            val importSuccessFormat = context.getString(R.string.import_success_format)
+                            val noMatchingServersMsg = context.getString(R.string.no_matching_servers)
+                            val importFailedFormat = context.getString(R.string.import_failed_format)
+                            
+                            coroutineScope.launch {
+                                // 先移除try-catch包裹，将整个操作逻辑放在协程中处理
+                                val result = runCatching {
+                                    val importedCount = ShadowsocksImporter.importOptimalIpsToConfigFile(context, sortedResults)
+                                    if (importedCount > 0) {
+                                        snackbarHostState.showSnackbar(String.format(importSuccessFormat, importedCount))
+                                        // 将Toast放在协程中调用，不直接在Composable上下文中调用
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, refreshFlagsNotice, Toast.LENGTH_LONG).show()
+                                        }
+                                        true
+                                    } else {
+                                        snackbarHostState.showSnackbar(noMatchingServersMsg)
+                                        false
+                                    }
+                                }.getOrElse { e ->
+                                    Log.e("SpeedTestResultsTab", "导入IP失败", e)
+                                    snackbarHostState.showSnackbar(String.format(importFailedFormat, e.message))
+                                    false
+                                }
+                            }
+                        },
+                        icon = Icons.Default.SaveAlt,
+                        contentDescription = stringResource(R.string.import_to_shadowsocks),
+                        label = stringResource(R.string.import_to_shadowsocks),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 }
             }
         }
@@ -816,14 +1007,14 @@ fun SpeedTestResultsTab() {
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
-                Text(
+                        Text(
                     text = "测速结果 (${sortedResults.size})",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
+                        Text(
                         text = "按下载速度排序，已过滤0速度结果",
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -847,7 +1038,10 @@ fun SpeedTestResultsTab() {
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    items(sortedResults) { result ->
+                    items(
+                        items = sortedResults,
+                        key = { result -> result.ip + result.port + result.timestamp }
+                    ) { result ->
                         SpeedTestResultItem(result)
                     }
                 }
@@ -860,9 +1054,17 @@ fun SpeedTestResultsTab() {
  * 格式化时间戳为可读时间
  */
 private fun formatTimestamp(timestamp: Long): String {
-    val date = java.util.Date(timestamp)
-    val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-    return formatter.format(date)
+    // 使用更现代的java.time API
+    val instant = java.time.Instant.ofEpochMilli(timestamp)
+    val localDateTime = java.time.LocalDateTime.ofInstant(
+        instant, 
+        java.time.ZoneId.systemDefault()
+    )
+    val formatter = java.time.format.DateTimeFormatter.ofPattern(
+        "yyyy-MM-dd HH:mm:ss", 
+        java.util.Locale.getDefault()
+    )
+    return localDateTime.format(formatter)
 }
 
 /**
@@ -881,8 +1083,8 @@ fun IpListTab(viewModel: OptimalIpViewModel) {
     val clipboardManager = LocalClipboardManager.current
     val ipInputText by viewModel.ipInputText.collectAsState()
     
-    val isTestingInProgress = remember { OptimalIpManager.isTestingInProgress }
-    val isTesting by isTestingInProgress
+    // 使用派生状态
+    val isTesting by remember { derivedStateOf { OptimalIpManager.isTestingInProgress.value } }
     
     // 滚动状态
     val scrollState = rememberScrollState()
@@ -997,7 +1199,7 @@ fun IpListTab(viewModel: OptimalIpViewModel) {
                         )
                     }
                     Text(
-                        text = "获取",
+                        text = "从网络获取",
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
@@ -1045,5 +1247,40 @@ fun IpListTab(viewModel: OptimalIpViewModel) {
                 }
             }
         }
+    }
+}
+
+/**
+ * 带有标签的操作按钮
+ */
+@Composable
+private fun ActionButtonWithLabel(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    contentDescription: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.primaryContainer
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.padding(vertical = 4.dp)
+    ) {
+        FloatingActionButton(
+            onClick = onClick,
+            modifier = Modifier.size(56.dp),
+            containerColor = containerColor
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 } 

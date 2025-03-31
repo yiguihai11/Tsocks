@@ -184,7 +184,55 @@ private fun JsonNodeLabel(element: JsonElement, key: String) {
                 val (color, text) = when {
                     primitive.isBoolean -> Color(0xFF8F6B32) to primitive.asBoolean.toString()
                     primitive.isNumber -> Color(0xFF1C78D6) to primitive.asNumber.toString()
-                    else -> Color(0xFF007F0E) to "\"${primitive.asString}\""
+                    else -> {
+                        // 对字符串处理转义字符，使其更易读
+                        val str = primitive.asString
+                        
+                        // 使用StringBuilder手动处理每个字符，避免使用有问题的转义序列
+                        val unescapedStr = StringBuilder()
+                        var i = 0
+                        while (i < str.length) {
+                            if (str[i] == '\\' && i + 1 < str.length) {
+                                when (str[i + 1]) {
+                                    '\"' -> unescapedStr.append('\"')
+                                    '\\' -> unescapedStr.append('\\')
+                                    'n' -> unescapedStr.append('\n')
+                                    'r' -> unescapedStr.append('\r')
+                                    't' -> unescapedStr.append('\t')
+                                    '/' -> unescapedStr.append('/')
+                                    'b' -> unescapedStr.append('\b')
+                                    'f' -> unescapedStr.append('\u000C') // 换页符
+                                    'u' -> {
+                                        // Unicode转义序列 \uXXXX
+                                        if (i + 5 < str.length) {
+                                            try {
+                                                val hexValue = str.substring(i + 2, i + 6).toInt(16)
+                                                unescapedStr.append(hexValue.toChar())
+                                                i += 4 // 跳过这4个十六进制字符
+                                            } catch (e: Exception) {
+                                                // 如果解析失败，保留原样
+                                                unescapedStr.append("\\u")
+                                            }
+                                        } else {
+                                            // 不完整的Unicode序列，保留原样
+                                            unescapedStr.append("\\u")
+                                        }
+                                    }
+                                    else -> {
+                                        // 未知的转义序列，保留反斜杠
+                                        unescapedStr.append('\\')
+                                        unescapedStr.append(str[i + 1])
+                                    }
+                                }
+                                i += 2 // 跳过转义序列的两个字符
+                            } else {
+                                unescapedStr.append(str[i])
+                                i++
+                            }
+                        }
+                        
+                        Color(0xFF007F0E) to "\"${unescapedStr}\""
+                    }
                 }
                 withStyle(SpanStyle(color = color)) {
                     append(text)

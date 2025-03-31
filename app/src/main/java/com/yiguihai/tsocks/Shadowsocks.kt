@@ -26,12 +26,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Visibility
@@ -889,6 +893,25 @@ fun ServersTab(
         // ... existing code ...
     }
 
+    // 为每个服务器加载国旗
+    LaunchedEffect(serversList) {
+        coroutineScope.launch {
+            serversList.forEach { server ->
+                if (server.address.isNotEmpty() && !countryFlags.containsKey(server.address)) {
+                    val flagResId = GeoIpUtils.getCountryFlagResId(context, server.address)
+                    countryFlags[server.address] = flagResId
+                    
+                    // 如果没有找到国旗资源，可能是特殊网络
+                    if (flagResId == null) {
+                        networkTypes[server.address] = GeoIpUtils.getNetworkType(server.address)
+                    } else {
+                        networkTypes.remove(server.address)
+                    }
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1259,7 +1282,7 @@ fun ServersTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Router,
+                        imageVector = Icons.Default.Settings,
                         contentDescription = null,
                         modifier = Modifier.size(15.dp)
                     )
@@ -1484,6 +1507,22 @@ fun ServersTab(
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        // 复制按钮 - 添加在这里
+                                        IconButton(onClick = {
+                                            // 生成SS URI
+                                            val ssUri = server.toShadowsocksSip002Url()
+                                            
+                                            // 复制到剪贴板
+                                            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                            val clip = android.content.ClipData.newPlainText("SS URI", ssUri)
+                                            clipboardManager.setPrimaryClip(clip)
+                                            
+                                            // 提示用户
+                                            Toast.makeText(context, "已复制服务器连接", Toast.LENGTH_SHORT).show()
+                                        }) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = "复制")
+                                        }
+                                        
                                         // 删除按钮
                                         IconButton(onClick = {
                                             val newList = serversList.toMutableList()
@@ -1524,13 +1563,34 @@ fun ServersTab(
                                         )
                                     }
                                 } else {
-                                    IconButton(onClick = {
-                                        val newList = serversList.toMutableList()
-                                        newList.removeAt(index)
-                                        serversList = newList
-                                        onServersChanged(newList)
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "删除")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 复制按钮
+                                        IconButton(onClick = {
+                                            // 生成SS URI
+                                            val ssUri = server.toShadowsocksSip002Url()
+                                            
+                                            // 复制到剪贴板
+                                            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                            val clip = android.content.ClipData.newPlainText("SS URI", ssUri)
+                                            clipboardManager.setPrimaryClip(clip)
+                                            
+                                            // 提示用户
+                                            Toast.makeText(context, "已复制服务器连接", Toast.LENGTH_SHORT).show()
+                                        }) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = "复制")
+                                        }
+                                        
+                                        // 删除按钮
+                                        IconButton(onClick = {
+                                            val newList = serversList.toMutableList()
+                                            newList.removeAt(index)
+                                            serversList = newList
+                                            onServersChanged(newList)
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "删除")
+                                        }
                                     }
                                 }
                             }
@@ -1799,10 +1859,19 @@ fun ServersTab(
             Button(
                 onClick = {
                     val newList = serversList.toMutableList()
-                    newList.add(ServerConfig(disabled = false)) // 新添加的服务器默认启用
-                    serversList = newList
-                    onServersChanged(newList)
-                    expandedItemIndex = newList.size - 1
+                    // 创建新服务器
+                    val newServer = ServerConfig(disabled = false)
+                    // 在新服务器添加到列表之前，先禁用所有现有服务器
+                    val updatedServers = newList.map { it.copy(disabled = true) }.toMutableList()
+                    // 添加新服务器（已启用）
+                    updatedServers.add(newServer)
+                    // 更新列表和UI
+                    serversList = updatedServers
+                    onServersChanged(updatedServers)
+                    // 展开新添加的服务器配置项
+                    expandedItemIndex = updatedServers.size - 1
+                    // 设置选中的服务器索引
+                    selectedServerIndex = updatedServers.size - 1
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2296,7 +2365,7 @@ fun JsonViewTab(config: ShadowsocksConfig) {
                 .padding(16.dp)
         ) {
             Icon(
-                imageVector = Icons.Outlined.ContentCopy,
+                imageVector = Icons.Default.ContentCopy,
                 contentDescription = "复制JSON"
             )
         }
@@ -2412,5 +2481,46 @@ fun parseShadowsocksUri(uri: String): ServerConfig? {
     } catch (e: Exception) {
         Log.e("Shadowsocks", "解析SS URI失败", e)
         return null
+    }
+}
+
+/**
+ * 将ServerConfig转换为Shadowsocks URI (SIP002格式)
+ * @return SS URI字符串，格式为ss://userinfo@hostname:port[/?plugin][#tag]
+ */
+fun ServerConfig.toShadowsocksSip002Url(): String {
+    try {
+        // 构建用户信息部分 method:password
+        val userInfo = "$method:$password"
+        val encodedUserInfo = android.util.Base64.encodeToString(
+            userInfo.toByteArray(),
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING
+        )
+        
+        // 构建URI的主体部分
+        var uri = "ss://$encodedUserInfo@$address:$port"
+        
+        // 添加插件信息（如果有）
+        if (!plugin.isNullOrEmpty()) {
+            uri += "/?plugin="
+            val pluginString = buildString {
+                append(plugin)
+                if (!plugin_opts.isNullOrEmpty()) {
+                    append(";")
+                    append(plugin_opts)
+                }
+            }
+            uri += java.net.URLEncoder.encode(pluginString, "UTF-8")
+        }
+        
+        // 添加备注（如果有）
+        if (remark.isNotEmpty()) {
+            uri += "#" + java.net.URLEncoder.encode(remark, "UTF-8")
+        }
+        
+        return uri
+    } catch (e: Exception) {
+        Log.e("Shadowsocks", "生成SS URI失败", e)
+        return ""
     }
 }

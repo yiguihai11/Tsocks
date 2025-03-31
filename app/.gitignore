@@ -1,2 +1,7 @@
 /build
-/src/main/jnilibs
+/src/main/jniLibs
+/src/main/libs
+/release
+*.so
+/src/main/obj
+/libs

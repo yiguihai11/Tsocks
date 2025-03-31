@@ -208,7 +208,8 @@ fun ProxyModeTab(preferences: Preferences) {
                     label = { Text(if (label == "启用IPv4") "DNS v4服务器" else "DNS v6服务器") },
                     placeholder = { Text(if (label == "启用IPv4") "例如: 8.8.8.8" else "例如: 2001:4860:4860::8844") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().height(if (label == "启用IPv6") 60.dp else 56.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium,
                 )
             }
         }
