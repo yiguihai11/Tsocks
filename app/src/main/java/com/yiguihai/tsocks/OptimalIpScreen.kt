@@ -466,7 +466,13 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
     // 自动滚动到底部
     LaunchedEffect(testResults.size) {
         if (testResults.isNotEmpty()) {
-            listState.animateScrollToItem(testResults.size - 1)
+            try {
+                // 修复索引越界问题：确保索引在有效范围内
+                val lastIndex = (testResults.size - 1).coerceAtLeast(0)
+                listState.animateScrollToItem(lastIndex)
+            } catch (e: Exception) {
+                Log.e("SpeedTestTab", "滚动到底部失败: ${e.message}", e)
+            }
         }
     }
 
@@ -1040,7 +1046,7 @@ fun SpeedTestResultsTab() {
                 ) {
                     items(
                         items = sortedResults,
-                        key = { result -> result.ip + result.port + result.timestamp }
+                        key = { result -> "${result.ip}:${result.port}:${result.timestamp}" }
                     ) { result ->
                         SpeedTestResultItem(result)
                     }
@@ -1126,7 +1132,11 @@ fun IpListTab(viewModel: OptimalIpViewModel) {
                         IconButton(
                             onClick = { 
                                 coroutineScope.launch {
-                                    scrollState.animateScrollTo(0)
+                                    try {
+                                        scrollState.animateScrollTo(0)
+                                    } catch (e: Exception) {
+                                        Log.e("IpListTab", "滚动到顶部失败: ${e.message}", e)
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -1150,7 +1160,11 @@ fun IpListTab(viewModel: OptimalIpViewModel) {
                         IconButton(
                             onClick = { 
                                 coroutineScope.launch {
-                                    scrollState.animateScrollTo(scrollState.maxValue)
+                                    try {
+                                        scrollState.animateScrollTo(scrollState.maxValue)
+                                    } catch (e: Exception) {
+                                        Log.e("IpListTab", "滚动到底部失败: ${e.message}", e)
+                                    }
                                 }
                             },
                             modifier = Modifier

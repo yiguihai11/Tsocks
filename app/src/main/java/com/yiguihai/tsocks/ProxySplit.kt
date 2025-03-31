@@ -347,7 +347,15 @@ fun AppProxyTab(preferences: Preferences) {
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
-            LazyColumn { items(filteredApps) { app -> AppListItem(app, packageManager, preferences); HorizontalDivider() } }
+            LazyColumn { 
+                items(
+                    items = filteredApps,
+                    key = { app -> app.packageName }
+                ) { app -> 
+                    AppListItem(app, packageManager, preferences)
+                    HorizontalDivider() 
+                } 
+            }
         }
     }
 }
