@@ -140,8 +140,10 @@ class Preferences(context: Context) {
     private var lastSaveTime = 0L
     private val hasPendingChanges = AtomicBoolean(false)
     private val isConfigLoaded = AtomicBoolean(false)
-    private val gson: Gson = GsonBuilder()
-        .registerTypeAdapter(AppInfo::class.java, AppInfoTypeAdapter())
+    private val appInfoTypeAdapter = AppInfoTypeAdapter()
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(AppInfo::class.java, appInfoTypeAdapter)
+        .disableHtmlEscaping()
         .create()
     private val appProxyStatusCache = ConcurrentHashMap<String, Boolean>()
     

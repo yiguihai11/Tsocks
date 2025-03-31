@@ -1,5 +1,6 @@
 package com.yiguihai.tsocks
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -32,11 +33,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -94,12 +91,10 @@ import com.yiguihai.tsocks.utils.JsonTreeView
 import com.yiguihai.tsocks.utils.NativeProgramExecutor
 import com.yiguihai.tsocks.utils.Preferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Job
-import android.app.Activity
-import androidx.activity.ComponentActivity
 
 // Data models for the configuration
 data class ShadowsocksConfig(
@@ -1542,6 +1537,14 @@ fun ServersTab(
                                                 }
                                                 serversList = updatedServers
                                                 onServersChanged(updatedServers)
+                                            } else {
+                                                // 获取当前选中的索引
+                                                selectedServerIndex?.let { currentIndex ->
+                                                    // 如果删除的服务器在当前选中服务器之前，需要调整选中索引
+                                                    if (index < currentIndex) {
+                                                        selectedServerIndex = currentIndex - 1
+                                                    }
+                                                }
                                             }
                                         }) {
                                             Icon(Icons.Default.Delete, contentDescription = "删除")
@@ -2284,7 +2287,7 @@ fun JsonViewTab(config: ShadowsocksConfig) {
         config
     }
     
-    val gson = GsonBuilder().setPrettyPrinting().create()
+    val gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
     val jsonString = gson.toJson(displayConfig)
     val context = LocalContext.current
     var useJsonTreeView by remember { mutableStateOf(false) }
@@ -2372,102 +2375,227 @@ fun JsonViewTab(config: ShadowsocksConfig) {
     }
 }
 
-// 函数放在Shadowsocks.kt文件中，class ShadowsocksManager的companion object外部
+/**
+ * 将ServerConfig转换为Shadowsocks URI (SIP002格式)
+ * @return SS URI字符串，格式为ss://userinfo@hostname:port[/?plugin][#tag]
+ */
+fun ServerConfig.toShadowsocksSip002Url(): String {
+    try {
+        // 根据SIP002规范，对于非AEAD-2022算法，userinfo应该使用Base64URL编码
+        // 构建用户信息部分 method:password
+        val userInfo = "$method:$password"
+        val encodedUserInfo = android.util.Base64.encodeToString(
+            userInfo.toByteArray(),
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP
+        )
+        
+        // 构建URI的主体部分
+        val uri = StringBuilder("ss://")
+        uri.append(encodedUserInfo)
+        uri.append('@')
+        uri.append(address)
+        uri.append(':')
+        uri.append(port)
+        
+        // 添加插件信息（如果有）
+        if (!plugin.isNullOrEmpty()) {
+            uri.append('/')
+            uri.append('?')
+            uri.append("plugin=")
+            // 插件参数需要URL编码
+            val pluginString = if (!plugin_opts.isNullOrEmpty()) {
+                "$plugin;$plugin_opts"
+            } else {
+                plugin
+            }
+            uri.append(java.net.URLEncoder.encode(pluginString, "UTF-8"))
+        }
+        
+        // 添加标签（如果有）
+        if (remark.isNotEmpty()) {
+            uri.append('#')
+            uri.append(java.net.URLEncoder.encode(remark, "UTF-8"))
+        }
+        
+        return uri.toString()
+    } catch (e: Exception) {
+        Log.e("Shadowsocks", "生成SS URI失败: ${e.message}", e)
+        return ""
+    }
+}
+
 /**
  * 解析Shadowsocks URI (SIP002格式)
- * @param uri SS URI字符串，格式为ss://userinfo@hostname:port[/?plugin][#tag]
+ * 格式: ss://userinfo@hostname:port[/?plugin][#tag]
+ * userinfo = websafe-base64-encode-utf8(method ":" password) 或 method ":" password
+ * @param uri SS URI字符串
  * @return 解析后的ServerConfig对象，解析失败则返回null
  */
 fun parseShadowsocksUri(uri: String): ServerConfig? {
+    Log.d("Shadowsocks", "开始解析SS URI")
+    
     try {
-        // 移除ss://前缀
-        val noPrefix = uri.substring(5)
+        // 移除可能存在的换行符和空格
+        val cleanUri = uri.trim()
         
-        // 解析标记（服务器备注）
-        val tagIndex = noPrefix.lastIndexOf('#')
-        val remark = if (tagIndex != -1) {
-            java.net.URLDecoder.decode(noPrefix.substring(tagIndex + 1), "UTF-8")
+        // 检查并移除ss://前缀
+        if (!cleanUri.startsWith("ss://", ignoreCase = true)) {
+            Log.e("Shadowsocks", "无效的SS URI: 缺少ss://前缀")
+            return null
+        }
+        
+        // 移除ss://前缀
+        val noPrefix = cleanUri.substring(5)
+        
+        // 查找@符号，分离用户信息和服务器地址
+        val atIndex = noPrefix.indexOf('@')
+        if (atIndex == -1) {
+            Log.e("Shadowsocks", "无效的SS URI: 缺少@分隔符")
+            return null
+        }
+        
+        // 提取用户信息部分
+        val userInfo = noPrefix.substring(0, atIndex)
+        
+        // 提取服务器部分
+        val serverPart = noPrefix.substring(atIndex + 1)
+        
+        // 分离标签信息
+        val hashIndex = serverPart.indexOf('#')
+        val serverAndParams = if (hashIndex != -1) {
+            serverPart.substring(0, hashIndex)
+        } else {
+            serverPart
+        }
+        
+        // 提取标签（如果有）
+        val tag = if (hashIndex != -1) {
+            try {
+                java.net.URLDecoder.decode(serverPart.substring(hashIndex + 1), "UTF-8")
+            } catch (e: Exception) {
+                Log.w("Shadowsocks", "解析标签失败", e)
+                ""
+            }
         } else {
             ""
         }
         
-        // 截取不含标记的部分
-        val mainPart = if (tagIndex != -1) noPrefix.substring(0, tagIndex) else noPrefix
-        
-        // 查找@符号，分离用户信息和服务器地址
-        val atIndex = mainPart.lastIndexOf('@')
-        if (atIndex == -1) return null
-        
-        val userInfo = mainPart.substring(0, atIndex)
-        val serverPart = mainPart.substring(atIndex + 1)
-        
-        // 解析服务器地址和端口
-        val hostPortParts = serverPart.split(":")
-        if (hostPortParts.size < 2) return null
-        
-        val address = hostPortParts[0]
-        
-        // 处理端口和可能的插件部分
-        val portAndParams = hostPortParts[1]
-        val queryIndex = portAndParams.indexOf('?')
-        
-        val port = if (queryIndex != -1) {
-            portAndParams.substring(0, queryIndex).toInt()
+        // 分离服务器地址和插件信息
+        val questionMarkIndex = serverAndParams.indexOf('?')
+        val serverAndPort = if (questionMarkIndex != -1) {
+            serverAndParams.substring(0, questionMarkIndex)
         } else {
-            portAndParams.toInt()
+            serverAndParams
         }
         
-        // 处理插件信息
+        // 处理可能存在的路径分隔符
+        val slashIndex = serverAndPort.indexOf('/')
+        val serverInfo = if (slashIndex != -1) {
+            serverAndPort.substring(0, slashIndex)
+        } else {
+            serverAndPort
+        }
+        
+        // 分离服务器地址和端口
+        val lastColonIndex = serverInfo.lastIndexOf(':')
+        if (lastColonIndex == -1) {
+            Log.e("Shadowsocks", "无效的SS URI: 缺少端口")
+            return null
+        }
+        
+        val address = serverInfo.substring(0, lastColonIndex)
+        val portStr = serverInfo.substring(lastColonIndex + 1)
+        
+        // 解析端口
+        val port = try {
+            portStr.toInt()
+        } catch (e: Exception) {
+            Log.e("Shadowsocks", "无效的端口号: $portStr", e)
+            return null
+        }
+        
+        // 判断是否是Base64编码的用户信息
+        val isBase64 = try {
+            // 尝试Base64解码，如果成功且结果包含冒号，则认为是Base64编码
+            val padding = when (userInfo.length % 4) {
+                2 -> "=="
+                3 -> "="
+                else -> ""
+            }
+            val paddedUserInfo = userInfo.replace('-', '+')
+                .replace('_', '/')
+                .plus(padding)
+            
+            val decoded = String(android.util.Base64.decode(paddedUserInfo, android.util.Base64.DEFAULT))
+            decoded.contains(':')
+        } catch (e: Exception) {
+            Log.d("Shadowsocks", "非Base64编码的用户信息")
+            false
+        }
+        
+        // 解析用户信息（加密方法和密码）
+        val methodAndPassword = if (isBase64) {
+            try {
+                // 对于Base64编码的用户信息
+                val padding = when (userInfo.length % 4) {
+                    2 -> "=="
+                    3 -> "="
+                    else -> ""
+                }
+                val paddedUserInfo = userInfo.replace('-', '+')
+                    .replace('_', '/')
+                    .plus(padding)
+                
+                String(android.util.Base64.decode(paddedUserInfo, android.util.Base64.DEFAULT))
+            } catch (e: Exception) {
+                Log.e("Shadowsocks", "Base64解码失败: ${e.message}", e)
+                return null
+            }
+        } else {
+            // 对于非Base64编码的用户信息，需要URL解码
+            java.net.URLDecoder.decode(userInfo, "UTF-8")
+        }
+        
+        // 分离加密方法和密码
+        val colonIndex = methodAndPassword.indexOf(':')
+        if (colonIndex == -1) {
+            Log.e("Shadowsocks", "无效的用户信息格式: 缺少冒号分隔符")
+            return null
+        }
+        
+        val method = methodAndPassword.substring(0, colonIndex)
+        val password = methodAndPassword.substring(colonIndex + 1)
+        
+        // 解析插件信息
         var plugin: String? = null
         var pluginOpts: String? = null
         
-        if (queryIndex != -1) {
-            val queryPart = portAndParams.substring(queryIndex)
-            val pluginStartIndex = queryPart.indexOf("plugin=")
-            
-            if (pluginStartIndex != -1) {
-                var pluginEndIndex = queryPart.indexOf('&', pluginStartIndex)
-                if (pluginEndIndex == -1) pluginEndIndex = queryPart.length
-                
-                val pluginValue = java.net.URLDecoder.decode(
-                    queryPart.substring(pluginStartIndex + 7, pluginEndIndex),
-                    "UTF-8"
-                )
-                
-                // 分离插件名称和参数
-                val pluginParts = pluginValue.split(";")
-                plugin = pluginParts[0]
-                
-                if (pluginParts.size > 1) {
-                    // 合并所有参数为一个字符串
-                    pluginOpts = pluginParts.subList(1, pluginParts.size).joinToString(";")
+        if (questionMarkIndex != -1) {
+            val queryString = serverAndParams.substring(questionMarkIndex + 1)
+            val params = queryString.split('&')
+            for (param in params) {
+                if (param.startsWith("plugin=")) {
+                    try {
+                        val encodedPlugin = param.substring(7)
+                        val decodedPlugin = java.net.URLDecoder.decode(encodedPlugin, "UTF-8")
+                        
+                        // 分离插件名称和选项
+                        val semicolonIndex = decodedPlugin.indexOf(';')
+                        if (semicolonIndex != -1) {
+                            plugin = decodedPlugin.substring(0, semicolonIndex)
+                            pluginOpts = decodedPlugin.substring(semicolonIndex + 1)
+                        } else {
+                            plugin = decodedPlugin
+                        }
+                        break
+                    } catch (e: Exception) {
+                        Log.w("Shadowsocks", "解析插件参数失败", e)
+                    }
                 }
             }
         }
         
-        // 解码用户信息以获取加密方法和密码
-        val method: String
-        val password: String
-        
-        // 检查用户信息是否为Base64编码
-        if (userInfo.matches(Regex("^[A-Za-z0-9+/]+={0,2}$"))) {
-            // 尝试base64解码
-            val decoded = String(android.util.Base64.decode(userInfo, android.util.Base64.DEFAULT))
-            val parts = decoded.split(":")
-            if (parts.size != 2) return null
-            
-            method = parts[0]
-            password = parts[1]
-        } else {
-            // 对于未编码的用户信息，直接分割
-            val parts = userInfo.split(":")
-            if (parts.size != 2) return null
-            
-            method = parts[0]
-            password = java.net.URLDecoder.decode(parts[1], "UTF-8")
-        }
-        
-        // 创建ServerConfig对象
+        // 创建服务器配置对象
         return ServerConfig(
             disabled = false,
             address = address,
@@ -2476,51 +2604,12 @@ fun parseShadowsocksUri(uri: String): ServerConfig? {
             password = password,
             plugin = plugin,
             plugin_opts = pluginOpts,
-            remark = remark
-        )
+            remark = tag
+        ).also {
+            Log.d("Shadowsocks", "成功解析SS URI: ${it.address}:${it.port} (${it.method})")
+        }
     } catch (e: Exception) {
         Log.e("Shadowsocks", "解析SS URI失败", e)
         return null
-    }
-}
-
-/**
- * 将ServerConfig转换为Shadowsocks URI (SIP002格式)
- * @return SS URI字符串，格式为ss://userinfo@hostname:port[/?plugin][#tag]
- */
-fun ServerConfig.toShadowsocksSip002Url(): String {
-    try {
-        // 构建用户信息部分 method:password
-        val userInfo = "$method:$password"
-        val encodedUserInfo = android.util.Base64.encodeToString(
-            userInfo.toByteArray(),
-            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING
-        )
-        
-        // 构建URI的主体部分
-        var uri = "ss://$encodedUserInfo@$address:$port"
-        
-        // 添加插件信息（如果有）
-        if (!plugin.isNullOrEmpty()) {
-            uri += "/?plugin="
-            val pluginString = buildString {
-                append(plugin)
-                if (!plugin_opts.isNullOrEmpty()) {
-                    append(";")
-                    append(plugin_opts)
-                }
-            }
-            uri += java.net.URLEncoder.encode(pluginString, "UTF-8")
-        }
-        
-        // 添加备注（如果有）
-        if (remark.isNotEmpty()) {
-            uri += "#" + java.net.URLEncoder.encode(remark, "UTF-8")
-        }
-        
-        return uri
-    } catch (e: Exception) {
-        Log.e("Shadowsocks", "生成SS URI失败", e)
-        return ""
     }
 }

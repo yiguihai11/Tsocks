@@ -231,7 +231,20 @@ private fun JsonNodeLabel(element: JsonElement, key: String) {
                             }
                         }
                         
-                        Color(0xFF007F0E) to "\"${unescapedStr}\""
+                        // 处理最终字符串中的任何剩余Unicode转义序列
+                        // 例如，在JSON解析过程中可能没有被正确解析的\u003c等格式
+                        val finalString = unescapedStr.toString()
+                        val unicodePattern = Regex("\\\\u([0-9a-fA-F]{4})")
+                        val fullyUnescapedStr = unicodePattern.replace(finalString) { matchResult ->
+                            try {
+                                val hexValue = matchResult.groupValues[1].toInt(16)
+                                hexValue.toChar().toString()
+                            } catch (e: Exception) {
+                                matchResult.value // 保留原样
+                            }
+                        }
+                        
+                        Color(0xFF007F0E) to "\"${fullyUnescapedStr}\""
                     }
                 }
                 withStyle(SpanStyle(color = color)) {
