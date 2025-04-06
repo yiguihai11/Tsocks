@@ -236,4 +236,23 @@
     <string name="no_matching_servers">No matching server configurations found</string>
     <string name="import_failed_format">Import failed: %s</string>
     <string name="clear_success">All speed test results cleared</string>
+
+    <!-- New DNS resources -->
+    <string name="dns">DNS重定向</string>
+    <string name="dns_redirect_enabled">启用DNS重定向</string>
+    <string name="dns_src_address">源地址 (需要拦截的DNS请求IP)</string>
+    <string name="dns_src_address_ipv6">源地址 (需要拦截的IPv6 DNS请求IP)</string>
+    <string name="dns_src_port">源端口 (通常为53)</string>
+    <string name="dns_dst_address">目标地址 (转发到此DNS服务器)</string>
+    <string name="dns_dst_address_ipv6">目标地址 (转发到此IPv6 DNS服务器)</string>
+    <string name="dns_dst_port">目标端口 (通常为53)</string>
+    <string name="dns_redirect_success">DNS重定向设置成功</string>
+    <string name="dns_redirect_failure">DNS重定向设置失败</string>
+    <string name="dns_redirect_apply">应用DNS重定向</string>
+    <string name="dns_use_ipv6">使用IPv6地址</string>
+    <string name="add_dns_redirect">添加DNS重定向</string>
+    <string name="apply">应用</string>
+
+    <!-- Added from the code block -->
+    <string name="dns_gateway">DNS Gateway</string>
 </resources>

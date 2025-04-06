@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,22 +33,18 @@ fun AboutScreen() {
     val context = LocalContext.current
     val packageInfo = remember {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(
-                    context.packageName,
-                    PackageManager.PackageInfoFlags.of(0)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(context.packageName, 0)
-            }
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.PackageInfoFlags.of(0)
+            )
         } catch (e: Exception) {
             null
         }
     }
     
+    // 获取版本信息
     val versionName = packageInfo?.versionName ?: "未知"
-    val versionCode = packageInfo?.versionCode?.toString() ?: "未知"
+    val versionCode = packageInfo?.longVersionCode?.toString() ?: "未知"
     
     Surface(
         modifier = Modifier.fillMaxSize(),

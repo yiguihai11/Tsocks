@@ -45,7 +45,8 @@ data class SpeedTestConfig(
     val maxThreads: Int = 100,
     val speedTestThreads: Int = 5,
     val speedTestUrl: String = "https://speed.cloudflare.com/__down?bytes=500000000",
-    val maxTimeout: Int = if (testMode == "ping") 1000 else 2000
+    val maxTimeout: Int = if (testMode == "ping") 1000 else 2000,
+    val maxTestIps: Int = 20  // 下载速度测试的最大IP数量，0表示测试所有IP
 )
 
 /**

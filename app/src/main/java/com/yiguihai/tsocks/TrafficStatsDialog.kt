@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import com.yiguihai.tsocks.ui.theme.TSocksTheme
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.net.Inet4Address
 import java.net.Inet6Address
@@ -87,13 +86,8 @@ class TrafficStatsActivity : ComponentActivity() {
 
     private fun observeTrafficStats() {
         job = lifecycleScope.launch {
-            TProxyService.trafficStats
-                .catch { e -> 
-                    if (e !is kotlinx.coroutines.CancellationException) {
-                        Log.e("TrafficStats", "流量统计接收失败", e)
-                    }
-                }
-                .collect { stats ->
+            try {
+                TProxyService.trafficStats.collect { stats ->
                     if (isFinishing) return@collect
                     currentUploadSpeed = stats.uploadSpeed
                     currentDownloadSpeed = stats.downloadSpeed
@@ -102,6 +96,11 @@ class TrafficStatsActivity : ComponentActivity() {
                     currentTotalUploadBytes = stats.totalUploadBytes
                     currentTotalDownloadBytes = stats.totalDownloadBytes
                 }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("TrafficStats", "流量统计接收失败", e)
+                }
+            }
         }
     }
 

@@ -151,7 +151,18 @@ class ShadowsocksManager {
                         BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                             reader.lineSequence()
                                 .takeWhile { isActive }
-                                .forEach { /* 可以选择不记录日志或只记录错误 */ }
+                                .forEach { line ->
+                                    // 记录Shadowsocks的输出日志
+                                    Log.d(TAG, "SS输出: $line")
+                                    
+                                    // 特别标记错误信息
+                                    if (line.contains("ERR", ignoreCase = true) || 
+                                        line.contains("error", ignoreCase = true) ||
+                                        line.contains("failed", ignoreCase = true) ||
+                                        line.contains("失败", ignoreCase = true)) {
+                                        Log.e(TAG, "SS错误: $line")
+                                    }
+                                }
                         }
                     } catch (e: Exception) { 
                         if (isRunning.get()) Log.e(TAG, "读取输出失败", e)

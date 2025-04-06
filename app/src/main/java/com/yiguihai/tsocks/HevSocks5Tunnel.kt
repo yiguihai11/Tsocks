@@ -56,6 +56,9 @@ import com.yiguihai.tsocks.utils.Preferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.Inet4Address
+import java.net.Inet6Address
+import java.net.InetAddress
 
 
 // 数据类定义
@@ -66,7 +69,8 @@ data class TunnelConfig(
     var ipv4: String = "198.18.0.1",
     var ipv6: String = "fc00::1",
     var postUpScript: String = "up.sh",
-    var preDownScript: String = "down.sh"
+    var preDownScript: String = "down.sh",
+    var dnsGateway: String = "127.0.0.1:1053"
 )
 
 data class Socks5Config(
@@ -220,6 +224,11 @@ fun TunnelTab(config: TunnelConfig, onConfigChanged: (TunnelConfig) -> Unit) {
             value = config.preDownScript,
             onValueChange = { onConfigChanged(config.copy(preDownScript = it)) }
         )
+        LabeledTextField(
+            label = stringResource(R.string.dns_gateway),
+            value = config.dnsGateway,
+            onValueChange = { onConfigChanged(config.copy(dnsGateway = it)) }
+        )
     }
 }
 
@@ -349,7 +358,8 @@ fun LabeledTextField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Text
+    keyboardType: KeyboardType = KeyboardType.Text,
+    placeholderText: String = ""
 ) {
     Row(
         modifier = Modifier
@@ -361,6 +371,7 @@ fun LabeledTextField(
             value = value,
             onValueChange = onValueChange,
             label = { Text(label) },
+            placeholder = { Text(placeholderText) },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType)
         )
@@ -541,6 +552,9 @@ fun generateYamlContent(
     Log.d("HevSocks5Tunnel", "隧道配置: $tunnelConfig")
     
     val content = buildString {
+        append("# Main configuration for hev-socks5-tunnel\n\n")
+        
+        // Tunnel section
         append("tunnel:\n")
         append("  # Interface name\n")
         append("  name: ${tunnelConfig.name}\n")
@@ -559,6 +573,10 @@ fun generateYamlContent(
         if (tunnelConfig.preDownScript != "down.sh") {
             append("  # Pre down script\n")
             append("  pre-down-script: ${tunnelConfig.preDownScript}\n")
+        }
+        if (tunnelConfig.dnsGateway.isNotBlank()) {
+            append("  # DNS Gateway for redirecting DNS traffic\n")
+            append("  dns-gateway: ${tunnelConfig.dnsGateway}\n")
         }
         append("\n")
         append("socks5:\n")
@@ -673,5 +691,34 @@ fun CustomDropdownSelector(
                 }
             }
         }
+    }
+}
+
+// 添加IP地址格式验证函数
+fun isValidIPv4(ip: String): Boolean {
+    try {
+        val parts = ip.split(".")
+        if (parts.size != 4) return false
+        
+        for (part in parts) {
+            val num = part.toInt()
+            if (num < 0 || num > 255) return false
+        }
+        
+        // 使用Java内置InetAddress验证
+        val addr = InetAddress.getByName(ip)
+        return addr is Inet4Address
+    } catch (e: Exception) {
+        return false
+    }
+}
+
+fun isValidIPv6(ip: String): Boolean {
+    try {
+        // 使用Java内置InetAddress验证
+        val addr = InetAddress.getByName(ip)
+        return addr is Inet6Address
+    } catch (e: Exception) {
+        return false
     }
 }

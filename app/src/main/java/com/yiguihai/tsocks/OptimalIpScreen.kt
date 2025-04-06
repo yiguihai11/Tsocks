@@ -348,11 +348,14 @@ class OptimalIpViewModel : ViewModel() {
                     }
                 )
                 
-                // 过滤出延迟测试成功的结果，按延迟排序，最多测试前20个IP的下载速度
+                // 过滤出延迟测试成功的结果，按延迟排序，根据配置选择需要测试的IP数量
                 val sortedResults = latencyResults
                     .filter { it.isSuccessful }
                     .sortedBy { it.latencyMs }
-                    .take(20)
+                    .let { results ->
+                        // 如果maxTestIps为0，则测试所有IP，否则取前N个
+                        if (config.maxTestIps <= 0) results else results.take(config.maxTestIps)
+                    }
                 
                 // 进行下载速度测试
                 if (sortedResults.isNotEmpty() && OptimalIpManager.isTestingInProgress.value) {
@@ -492,10 +495,10 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
                     modifier = Modifier
                         .padding(16.dp)
                         .fillMaxWidth()
-    ) {
-        Text(
+                ) {
+                    Text(
                         text = "测速配置",
-            fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -592,6 +595,32 @@ fun SpeedTestTab(viewModel: OptimalIpViewModel) {
                             )
                             Text(
                                 text = "下载速度测试的并发线程数，建议保持较小值(5-10)以免网络拥堵",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Text("最大测试IP: ", modifier = Modifier.width(80.dp))
+                        Column {
+                            TextField(
+                                value = speedTestConfig.maxTestIps.toString(),
+                                onValueChange = { value ->
+                                    val maxIps = value.toIntOrNull() ?: 20
+                                    viewModel.updateTestConfig(speedTestConfig.copy(maxTestIps = maxIps))
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Text(
+                                text = "下载速度测试的最大IP数量，0表示测试所有IP，默认20个",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )

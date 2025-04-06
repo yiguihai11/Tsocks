@@ -699,7 +699,7 @@ object SpeedTestUtils {
             // 创建socket并连接
             val socket = sslSocketFactory.createSocket() as SSLSocket
             socket.connect(InetSocketAddress(ip, port), timeoutMs)
-            socket.soTimeout = timeoutMs
+            socket.soTimeout = 3000 // 初始设置为3秒超时，确保快速判断无响应的IP
             
             // 设置SNI
             socket.sslParameters = socket.sslParameters.apply {
@@ -791,10 +791,12 @@ object SpeedTestUtils {
             // 读取响应体
             var totalBytes = 0L
             val buffer = ByteArray(65536)
-            val maxTestTime = 30000 // 最长测试30秒
+            val initialWaitTime = 3000 // 最初等待3秒，如果没有数据则失败
+            val maxTestTime = 30000 // 一旦开始接收数据，最长测试30秒
             val minDownloadSize = 500000 // 至少下载500KB才计算速度
             var lastLogTime = startTime
             var lastBytesRead = 0L
+            var dataReceived = false // 是否已经接收到数据
             
             // 如果已知内容长度，记录下来
             if (contentLength > 0) {
@@ -802,29 +804,51 @@ object SpeedTestUtils {
             }
             
             // 读取响应体
-            while (isActive && System.currentTimeMillis() - startTime < maxTestTime && totalBytes < 10 * 1024 * 1024) {
-                val bytesRead = input.read(buffer)
-                if (bytesRead <= 0) {
-                    Log.d(TAG, "【测速HTTPS】IP: $ip, 数据接收完成")
-                    break
-                }
-                
-                totalBytes += bytesRead
-                
-                // 定期记录下载进度
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastLogTime > 1000) { 
-                    val currentBytesRead = totalBytes
-                    val bytesReadInInterval = currentBytesRead - lastBytesRead
-                    val intervalSeconds = (currentTime - lastLogTime) / 1000.0
-                    val currentSpeed = bytesReadInInterval / intervalSeconds / 1024.0
-                    
-                    if (bytesReadInInterval > 0) {
-                        Log.d(TAG, "【测速HTTPS进度】IP: $ip, 已下载: ${totalBytes/1024} KB, 当前速度: $currentSpeed KB/s, 总耗时: ${(currentTime-startTime)/1000.0}秒")
+            while (isActive && 
+                  ((dataReceived && System.currentTimeMillis() - startTime < maxTestTime) || 
+                   (!dataReceived && System.currentTimeMillis() - startTime < initialWaitTime)) && 
+                  totalBytes < 10 * 1024 * 1024) {
+                try {
+                    val bytesRead = input.read(buffer)
+                    if (bytesRead <= 0) {
+                        Log.d(TAG, "【测速HTTPS】IP: $ip, 数据接收完成")
+                        break
                     }
                     
-                    lastLogTime = currentTime
-                    lastBytesRead = currentBytesRead
+                    if (!dataReceived) {
+                        dataReceived = true // 标记已经开始接收数据
+                        Log.d(TAG, "【测速HTTPS】IP: $ip, 开始接收数据，耗时: ${System.currentTimeMillis() - startTime}ms")
+                        socket.soTimeout = 30000 // 接收到数据后延长超时时间
+                    }
+                    
+                    totalBytes += bytesRead
+                    
+                    // 定期记录下载进度
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastLogTime > 1000) { 
+                        val currentBytesRead = totalBytes
+                        val bytesReadInInterval = currentBytesRead - lastBytesRead
+                        val intervalSeconds = (currentTime - lastLogTime) / 1000.0
+                        val currentSpeed = bytesReadInInterval / intervalSeconds / 1024.0
+                        
+                        if (bytesReadInInterval > 0) {
+                            Log.d(TAG, "【测速HTTPS进度】IP: $ip, 已下载: ${totalBytes/1024} KB, 当前速度: $currentSpeed KB/s, 总耗时: ${(currentTime-startTime)/1000.0}秒")
+                        }
+                        
+                        lastLogTime = currentTime
+                        lastBytesRead = currentBytesRead
+                    }
+                } catch (e: SocketTimeoutException) {
+                    if (!dataReceived) {
+                        Log.e(TAG, "【测速HTTPS】IP: $ip, 连接成功但3秒内没有响应数据: ${e.message}")
+                        break
+                    } else {
+                        Log.e(TAG, "【测速HTTPS】IP: $ip, 下载中断: ${e.message}")
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "【测速HTTPS】IP: $ip, 读取数据失败: ${e.message}")
+                    break
                 }
             }
             
@@ -889,7 +913,7 @@ object SpeedTestUtils {
             // 创建socket并连接
             val socket = Socket()
             socket.connect(InetSocketAddress(ip, port), timeoutMs)
-            socket.soTimeout = timeoutMs
+            socket.soTimeout = 3000 // 初始设置为3秒超时，确保快速判断无响应的IP
             
             val connectionTime = System.currentTimeMillis() - connectionStartTime
             Log.d(TAG, "【测速HTTP】连接建立成功，耗时: ${connectionTime}ms，准备发送HTTP请求")
@@ -968,10 +992,12 @@ object SpeedTestUtils {
             // 读取响应体
             var totalBytes = 0L
             val buffer = ByteArray(65536)
-            val maxTestTime = 30000 // 最长测试30秒
+            val initialWaitTime = 3000 // 最初等待3秒，如果没有数据则失败
+            val maxTestTime = 30000 // 一旦开始接收数据，最长测试30秒
             val minDownloadSize = 500000 // 至少下载500KB才计算速度
             var lastLogTime = startTime
             var lastBytesRead = 0L
+            var dataReceived = false // 是否已经接收到数据
             
             // 如果已知内容长度，记录下来
             if (contentLength > 0) {
@@ -979,29 +1005,51 @@ object SpeedTestUtils {
             }
             
             // 读取响应体
-            while (isActive && System.currentTimeMillis() - startTime < maxTestTime && totalBytes < 10 * 1024 * 1024) {
-                val bytesRead = input.read(buffer)
-                if (bytesRead <= 0) {
-                    Log.d(TAG, "【测速HTTP】IP: $ip, 数据接收完成")
-                    break
-                }
-                
-                totalBytes += bytesRead
-                
-                // 定期记录下载进度
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastLogTime > 1000) { 
-                    val currentBytesRead = totalBytes
-                    val bytesReadInInterval = currentBytesRead - lastBytesRead
-                    val intervalSeconds = (currentTime - lastLogTime) / 1000.0
-                    val currentSpeed = bytesReadInInterval / intervalSeconds / 1024.0
-                    
-                    if (bytesReadInInterval > 0) {
-                        Log.d(TAG, "【测速HTTP进度】IP: $ip, 已下载: ${totalBytes/1024} KB, 当前速度: $currentSpeed KB/s, 总耗时: ${(currentTime-startTime)/1000.0}秒")
+            while (isActive && 
+                  ((dataReceived && System.currentTimeMillis() - startTime < maxTestTime) || 
+                   (!dataReceived && System.currentTimeMillis() - startTime < initialWaitTime)) && 
+                  totalBytes < 10 * 1024 * 1024) {
+                try {
+                    val bytesRead = input.read(buffer)
+                    if (bytesRead <= 0) {
+                        Log.d(TAG, "【测速HTTP】IP: $ip, 数据接收完成")
+                        break
                     }
                     
-                    lastLogTime = currentTime
-                    lastBytesRead = currentBytesRead
+                    if (!dataReceived) {
+                        dataReceived = true // 标记已经开始接收数据
+                        Log.d(TAG, "【测速HTTP】IP: $ip, 开始接收数据，耗时: ${System.currentTimeMillis() - startTime}ms")
+                        socket.soTimeout = 30000 // 接收到数据后延长超时时间
+                    }
+                    
+                    totalBytes += bytesRead
+                    
+                    // 定期记录下载进度
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastLogTime > 1000) { 
+                        val currentBytesRead = totalBytes
+                        val bytesReadInInterval = currentBytesRead - lastBytesRead
+                        val intervalSeconds = (currentTime - lastLogTime) / 1000.0
+                        val currentSpeed = bytesReadInInterval / intervalSeconds / 1024.0
+                        
+                        if (bytesReadInInterval > 0) {
+                            Log.d(TAG, "【测速HTTP进度】IP: $ip, 已下载: ${totalBytes/1024} KB, 当前速度: $currentSpeed KB/s, 总耗时: ${(currentTime-startTime)/1000.0}秒")
+                        }
+                        
+                        lastLogTime = currentTime
+                        lastBytesRead = currentBytesRead
+                    }
+                } catch (e: SocketTimeoutException) {
+                    if (!dataReceived) {
+                        Log.e(TAG, "【测速HTTP】IP: $ip, 连接成功但3秒内没有响应数据: ${e.message}")
+                        break
+                    } else {
+                        Log.e(TAG, "【测速HTTP】IP: $ip, 下载中断: ${e.message}")
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "【测速HTTP】IP: $ip, 读取数据失败: ${e.message}")
+                    break
                 }
             }
             
@@ -1068,7 +1116,7 @@ object SpeedTestUtils {
             // 创建socket并连接
             val socket = sslSocketFactory.createSocket() as SSLSocket
             socket.connect(InetSocketAddress(ip, port), timeoutMs)
-            socket.soTimeout = timeoutMs
+            socket.soTimeout = 3000 // 初始设置为3秒超时，确保快速判断无响应的IP
             
             // 设置SNI - 使用Cloudflare测速域名
             socket.sslParameters = socket.sslParameters.apply {
@@ -1140,17 +1188,41 @@ object SpeedTestUtils {
             // 读取响应体并测量速度
             var totalBytes = 0L
             val buffer = ByteArray(65536)
-            val maxTestTime = 10000 // 最长测试10秒
+            val initialWaitTime = 3000 // 最初等待3秒，如果没有数据则失败
+            val maxTestTime = 30000 // 一旦开始接收数据，最长测试30秒
+            var dataReceived = false // 是否已经接收到数据
             
             val startReadTime = System.currentTimeMillis()
-            while (isActive && System.currentTimeMillis() - startReadTime < maxTestTime) {
-                val bytesRead = input.read(buffer)
-                if (bytesRead <= 0) break
-                totalBytes += bytesRead
-                
-                // 每1MB记录一次
-                if (totalBytes % (1024 * 1024) < buffer.size) {
-                    Log.d(TAG, "【CF测速】IP: $ip, 已下载: ${totalBytes/1024/1024} MB")
+            while (isActive && 
+                  ((dataReceived && System.currentTimeMillis() - startReadTime < maxTestTime) || 
+                   (!dataReceived && System.currentTimeMillis() - startReadTime < initialWaitTime))) {
+                try {
+                    val bytesRead = input.read(buffer)
+                    if (bytesRead <= 0) break
+                    
+                    if (!dataReceived) {
+                        dataReceived = true // 标记已经开始接收数据
+                        Log.d(TAG, "【CF测速】IP: $ip, 开始接收数据，耗时: ${System.currentTimeMillis() - startReadTime}ms")
+                        socket.soTimeout = 30000 // 接收到数据后延长超时时间
+                    }
+                    
+                    totalBytes += bytesRead
+                    
+                    // 每1MB记录一次
+                    if (totalBytes % (1024 * 1024) < buffer.size) {
+                        Log.d(TAG, "【CF测速】IP: $ip, 已下载: ${totalBytes/1024/1024} MB")
+                    }
+                } catch (e: SocketTimeoutException) {
+                    if (!dataReceived) {
+                        Log.e(TAG, "【CF测速】IP: $ip, 连接成功但3秒内没有响应数据: ${e.message}")
+                        break
+                    } else {
+                        Log.e(TAG, "【CF测速】IP: $ip, 下载中断: ${e.message}")
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "【CF测速】IP: $ip, 读取数据失败: ${e.message}")
+                    break
                 }
             }
             

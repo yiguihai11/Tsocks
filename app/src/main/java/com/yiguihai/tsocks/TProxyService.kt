@@ -138,6 +138,9 @@ class TProxyService : VpnService() {
                 stopService()
                 return
             }
+            
+            // 应用DNS重定向配置
+            // applyDNSRedirectConfigs()
 
             // 启动Shadowsocks服务 - 在协程中调用挂起函数
             serviceScope.launch {

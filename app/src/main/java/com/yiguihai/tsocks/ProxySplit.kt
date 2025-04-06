@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -114,7 +116,15 @@ fun ProxyModeTab(preferences: Preferences) {
     var dnsV6 by remember { mutableStateOf(preferences.getDnsV6String()) }
     var excludeChinaIp by remember { mutableStateOf(preferences.getExcludeChinaIp()) }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    // 添加滚动功能
+    val scrollState = rememberScrollState()
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(scrollState)  // 确保整个内容可滚动
+    ) {
         Text("VPN分流模式", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))
         Column(Modifier.fillMaxWidth()) {
@@ -137,7 +147,7 @@ fun ProxyModeTab(preferences: Preferences) {
                 }
         }
         
-        // 国内IP直连设置（现在始终可见）
+        // 国内IP直连设置
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
@@ -173,46 +183,77 @@ fun ProxyModeTab(preferences: Preferences) {
         Spacer(Modifier.height(24.dp))
         Text("IP协议设置", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(16.dp))
-        listOf("启用IPv4" to ipv4Enabled, "启用IPv6" to ipv6Enabled).forEach { (label, enabled) ->
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text(label, modifier = Modifier.weight(1f))
+        
+        // IPv4设置
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically, 
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("启用IPv4", modifier = Modifier.weight(1f))
                 Switch(
-                    checked = enabled,
-                    onCheckedChange = {
-                        when (label) {
-                            "启用IPv4" -> {
-                                ipv4Enabled = it
-                                preferences.updateIPv4Enabled(it)
-                            }
-                            "启用IPv6" -> {
-                                ipv6Enabled = it
-                                preferences.updateIPv6Enabled(it)
-                            }
-                        }
+                    checked = ipv4Enabled,
+                    onCheckedChange = { 
+                        ipv4Enabled = it
+                        preferences.updateIPv4Enabled(it)
                     }
                 )
             }
-            if ((label == "启用IPv4" && ipv4Enabled) || (label == "启用IPv6" && ipv6Enabled)) {
+            
+            if (ipv4Enabled) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = if (label == "启用IPv4") dnsV4 else dnsV6,
+                    value = dnsV4,
                     onValueChange = {
-                        if (label == "启用IPv4") {
-                            dnsV4 = it
-                            preferences.updateDnsV4(it)
-                        } else {
-                            dnsV6 = it
-                            preferences.updateDnsV6(it)
-                        }
+                        dnsV4 = it
+                        preferences.updateDnsV4(it)
                     },
-                    label = { Text(if (label == "启用IPv4") "DNS v4服务器" else "DNS v6服务器") },
-                    placeholder = { Text(if (label == "启用IPv4") "例如: 8.8.8.8" else "例如: 2001:4860:4860::8844") },
+                    label = { Text("DNS v4服务器") },
+                    placeholder = { Text("例如: 8.8.8.8") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().height(if (label == "启用IPv6") 60.dp else 56.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+        
+        // IPv6设置 - 添加足够的间距
+        Spacer(Modifier.height(8.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically, 
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("启用IPv6", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = ipv6Enabled,
+                    onCheckedChange = { 
+                        ipv6Enabled = it
+                        preferences.updateIPv6Enabled(it)
+                    }
+                )
+            }
+            
+            if (ipv6Enabled) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = dnsV6,
+                    onValueChange = {
+                        dnsV6 = it
+                        preferences.updateDnsV6(it)
+                    },
+                    label = { Text("DNS v6服务器") },
+                    placeholder = { Text("例如: 2001:4860:4860::8844") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                     textStyle = MaterialTheme.typography.bodyMedium,
                 )
             }
         }
+        
+        // 添加底部填充，确保滚动时内容底部有足够空间
+        Spacer(Modifier.height(32.dp))
     }
 }
 

@@ -31,6 +31,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -103,8 +104,8 @@ class Preferences(context: Context) {
 
         // Shadowsocks配置常量
         private const val SS_PREF_NAME = "shadowsocks_config"
-        private const val KEY_SS_LOCALS = "locals"
-        private const val KEY_SS_SERVERS = "servers"
+        private const val KEY_SS_LOCALS = "ss_locals"
+        private const val KEY_SS_SERVERS = "ss_servers"
         private const val KEY_SS_BALANCER = "balancer"
         private const val KEY_SS_ONLINE_CONFIG = "online_config"
         private const val KEY_SS_LOG = "log"
@@ -118,12 +119,11 @@ class Preferences(context: Context) {
         private const val KEY_TEST_RESULTS = "test_results"
         
         // 单例模式
-        @Volatile
-        private var INSTANCE: Preferences? = null
+        private val INSTANCE = AtomicReference<Preferences>()
         
         fun getInstance(context: Context): Preferences =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Preferences(context.applicationContext).also { INSTANCE = it }
+            INSTANCE.get() ?: synchronized(this) {
+                INSTANCE.get() ?: Preferences(context.applicationContext).also { INSTANCE.set(it) }
             }
     }
     
@@ -458,24 +458,24 @@ class Preferences(context: Context) {
     }
 
     // 获取配置
-    fun getTunnelConfig(): TunnelConfig = tunnelConfig.value
-    fun getSocks5Config(): Socks5Config = socks5Config.value
-    fun getMiscConfig(): MiscConfig = miscConfig.value
+    fun getTunnelConfig() = tunnelConfig.value.copy()
+    fun getSocks5Config() = socks5Config.value.copy()
+    fun getMiscConfig() = miscConfig.value.copy()
 
     // 更新配置
     fun updateTunnelConfig(config: TunnelConfig) {
         tunnelConfig.value = config
-        saveTunnelConfigs()
+        tunnelPrefs.edit { putString(KEY_TUNNEL_CONFIG, gson.toJson(config)) }
     }
-
+    
     fun updateSocks5Config(config: Socks5Config) {
         socks5Config.value = config
-        saveTunnelConfigs()
+        tunnelPrefs.edit { putString(KEY_SOCKS5_CONFIG, gson.toJson(config)) }
     }
-
+    
     fun updateMiscConfig(config: MiscConfig) {
         miscConfig.value = config
-        saveTunnelConfigs()
+        tunnelPrefs.edit { putString(KEY_MISC_CONFIG, gson.toJson(config)) }
     }
 
     // 保存配置
@@ -489,22 +489,31 @@ class Preferences(context: Context) {
 
     // 加载HevSocks5Tunnel配置
     private fun loadTunnelConfigs() {
-        try {
-            tunnelPrefs.getString(KEY_TUNNEL_CONFIG, null)?.let {
-                tunnelConfig.value = gson.fromJson(it, TunnelConfig::class.java) ?: TunnelConfig()
+        val tunnelJson = tunnelPrefs.getString(KEY_TUNNEL_CONFIG, null)
+        if (tunnelJson != null) {
+            try {
+                tunnelConfig.value = gson.fromJson(tunnelJson, TunnelConfig::class.java)
+            } catch (e: Exception) {
+                Log.e("Preferences", "加载隧道配置失败", e)
             }
-            tunnelPrefs.getString(KEY_SOCKS5_CONFIG, null)?.let {
-                socks5Config.value = gson.fromJson(it, Socks5Config::class.java) ?: Socks5Config()
+        }
+
+        val socks5Json = tunnelPrefs.getString(KEY_SOCKS5_CONFIG, null)
+        if (socks5Json != null) {
+            try {
+                socks5Config.value = gson.fromJson(socks5Json, Socks5Config::class.java)
+            } catch (e: Exception) {
+                Log.e("Preferences", "加载SOCKS5配置失败", e)
             }
-            tunnelPrefs.getString(KEY_MISC_CONFIG, null)?.let {
-                miscConfig.value = gson.fromJson(it, MiscConfig::class.java) ?: MiscConfig()
+        }
+
+        val miscJson = tunnelPrefs.getString(KEY_MISC_CONFIG, null)
+        if (miscJson != null) {
+            try {
+                miscConfig.value = gson.fromJson(miscJson, MiscConfig::class.java)
+            } catch (e: Exception) {
+                Log.e("Preferences", "加载杂项配置失败", e)
             }
-        } catch (e: Exception) {
-            Log.e("Preferences", "加载HevSocks5Tunnel配置失败", e)
-            // 使用默认配置
-            tunnelConfig.value = TunnelConfig()
-            socks5Config.value = Socks5Config()
-            miscConfig.value = MiscConfig()
         }
     }
 
